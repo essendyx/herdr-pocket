@@ -1,0 +1,24 @@
+# systemd user unit: ~/.config/systemd/user/herdr-pocket.service
+# systemctl --user daemon-reload && systemctl --user enable --now herdr-pocket
+[Unit]
+Description=herdr-pocket (web app for herdr)
+After=herdr.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/herdr-pocket
+# Bind to the address your reverse proxy / tunnel connects to
+Environment=HOST=127.0.0.1
+Environment=PORT=7683
+# Public address of the app, used for CSRF and WebSocket origin checks
+Environment=HERDR_APP_ORIGIN=https://herdr.example.com
+# Cloudflare Access: team domain, application AUD tag and the one email allowed in
+Environment=CF_ACCESS_TEAM_DOMAIN=myteam.cloudflareaccess.com
+Environment=CF_ACCESS_AUD_FILE=%h/.config/herdr-app/cf-access-aud
+Environment=HERDR_APP_EMAIL=me@example.com
+ExecStart=%h/.bun/bin/bun server/main.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

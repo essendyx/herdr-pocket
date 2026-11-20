@@ -1,0 +1,12 @@
+{"type":"permission-mode","permissionMode":"default","sessionId":"s1"}
+{"type":"user","message":{"role":"user","content":"Setz bitte Prio 1 um."},"uuid":"u1"}
+{"type":"user","message":{"role":"user","content":"<system-reminder>intern</system-reminder>"},"uuid":"u1b","isMeta":true}
+{"type":"assistant","effort":"high","message":{"model":"claude-opus-5-5","role":"assistant","content":[{"type":"thinking","thinking":""},{"type":"text","text":"Ich schaue mir den Bericht an."},{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/home/alex/src/idlegame/docs/bericht.md"}}],"usage":{"input_tokens":10,"cache_read_input_tokens":90000,"cache_creation_input_tokens":10000,"output_tokens":50}}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"..."}]},"toolUseResult":{"type":"text"}}
+{"type":"assistant","effort":"high","message":{"model":"claude-opus-5-5","role":"assistant","content":[{"type":"tool_use","id":"t2","name":"TodoWrite","input":{"todos":[{"content":"Offline-Fortschritt","status":"completed"},{"content":"Tutorial","status":"in_progress"},{"content":"Sounds","status":"pending"}]}},{"type":"tool_use","id":"t3","name":"Edit","input":{"file_path":"/home/alex/src/idlegame/src/offline.ts","old_string":"a","new_string":"b"}}],"usage":{"input_tokens":5,"cache_read_input_tokens":100000,"cache_creation_input_tokens":20000,"output_tokens":80}}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t2","content":"ok"}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t3","content":"updated"}]},"toolUseResult":{"filePath":"/home/alex/src/idlegame/src/offline.ts","structuredPatch":[{"oldStart":1,"oldLines":2,"newStart":1,"newLines":3,"lines":[" export const X = 1;","-// TODO","+export function offlineGain() {","+  return 1;"]}]}}
+das ist keine gültige Zeile
+{"type":"permission-mode","permissionMode":"auto","sessionId":"s1"}
+{"type":"assistant","effort":"high","message":{"model":"claude-opus-5-5","role":"assistant","content":[{"type":"tool_use","id":"t4","name":"Bash","input":{"command":"npm test -- offline","description":"Tests"}},{"type":"tool_use","id":"t5","name":"Agent","input":{"description":"Sounds recherchieren","prompt":"..."}}],"usage":{"input_tokens":5,"cache_read_input_tokens":120000,"cache_creation_input_tokens":0,"output_tokens":30}}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t4","content":"FAIL","is_error":true}]}}

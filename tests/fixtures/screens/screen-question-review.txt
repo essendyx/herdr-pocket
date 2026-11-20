@@ -1,0 +1,14 @@
+● Der Fix ist eingespielt.
+
+────────────────────────────────────────────────────────────────────────────────────────────────
+←  ☒ Teil C  ☒ Teil D  ✔ Submit  →
+
+Review your answers
+
+ ● Testfrage C: Lieber Kaffee oder Tee?
+   → Kaffee
+ ● Testfrage D: Lieber Berge oder Meer?
+   → Meer
+
+❯ 1. Submit answers
+  2. Cancel

@@ -1,0 +1,16 @@
+● Fertig. Alles ist eingerichtet.
+                                                                                                           [-]
+✦ Heads up · Die neue Grenze von 2 Stunden verschiebt Stufe 2 von Tag 4 auf Tag 9,
+  weil die Abwesenheit weniger Ertrag bringt.
+
+  Kürzere Abwesenheit verlangsamt den Einstieg
+  - Bisher brachte eine Abwesenheit höchstens 6 Stunden Ertrag.
+  - Wer 30 Minuten am Tag spielt, verdient den Großteil in der Abwesenheit. Dieser Teil ist jetzt
+    deutlich kleiner.
+
+  1: Understood   2: Chat in main session   0: Dismiss
+                                                                       ✔ Update installed · /restart to apply
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)

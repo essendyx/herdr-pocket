@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="herdr">
+<meta name="theme-color" content="#0d7a70">
+<title>herdr</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div class="app" id="app" data-mview="list">
+  <button class="banner notif" id="banner" type="button" aria-live="polite">
+    <div class="ic">h</div>
+    <div class="a">herdr</div>
+    <div class="w">jetzt</div>
+    <div class="b" id="bannerText"></div>
+  </button>
+
+  <div class="connbar" id="connbar" hidden></div>
+  <div class="panes">
+    <!-- Agent-Liste -->
+    <section class="pane" id="p-list" aria-label="Agents">
+      <div class="topbar gutter">
+        <div class="brand"><b>herdr</b></div>
+        <button class="iconbtn desk-only" type="button" data-tab="activity" title="Aktivität"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></button>
+        <button class="iconbtn desk-only" type="button" data-tab="settings" title="Einstellungen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
+      </div>
+      <div class="gutter desk-only listseg-wrap"><div class="segw" id="listSeg"><button type="button" data-tab="agents" aria-pressed="true">Agents</button><button type="button" data-tab="spaces" aria-pressed="false">Spaces</button></div></div>
+      <div class="scroll gutter" id="listScroll">
+        <div class="counts" id="counts"></div>
+        <div class="quota" id="quota"></div>
+        <label class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="q" type="search" placeholder="Projekt oder Thema suchen" autocomplete="off"></label>
+        <div id="listBody"></div>
+      </div>
+    </section>
+
+    <!-- Hauptbereich -->
+    <section class="pane" id="p-main" aria-label="Inhalt"></section>
+
+    <!-- Aktivität rechts (nur breite Bildschirme) -->
+    <section class="pane" id="p-side" aria-label="Aktivität">
+      <div class="topbar gutter"><div class="brand"><b style="font-size:17px">Aktivität</b><span>heute</span></div></div>
+      <div class="scroll gutter"><div class="tl" id="sideTl"></div></div>
+    </section>
+  </div>
+
+  <nav class="tabbar" aria-label="Navigation">
+    <button type="button" data-tab="agents" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>Agents<span class="badge" id="tabBadge" hidden>0</span></button>
+    <button type="button" data-tab="spaces"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></svg>Spaces</button>
+    <button type="button" data-tab="activity"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>Aktivität</button>
+    <button type="button" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>Einstellungen</button>
+  </nav>
+
+  <button type="button" class="fab" data-new title="Neuer Agent" aria-label="Neuer Agent"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+  <div class="toast" id="toast" role="status"></div>
+  <div class="undo" id="undo" role="status" hidden><span id="undoText"></span><button type="button" id="undoBtn">Rückgängig</button></div>
+  <div id="sheetHost"></div>
+  <input type="file" id="photoInput" accept="image/*" hidden>
+</div>
+
+<script defer src="/api.js"></script>
+<script defer src="/app.js"></script>
+</body>
+</html>

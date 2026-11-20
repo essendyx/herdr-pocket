@@ -1,0 +1,91 @@
+[
+ {
+  "agent": "claude",
+  "agent_status": "idle",
+  "agent_session": {
+   "source": "herdr:claude",
+   "agent": "claude",
+   "kind": "id",
+   "value": "88b41975-b299-4bd4-b86a-551c9756486e"
+  },
+  "cwd": "/home/alex/src/garden-club-site",
+  "pane_id": "w8:p3",
+  "tab_id": "w8:t3",
+  "workspace_id": "w8",
+  "terminal_title_stripped": "Flyer for the website",
+  "focused": false
+ },
+ {
+  "agent_status": "unknown",
+  "cwd": "/home/alex/src/garden-club-site",
+  "pane_id": "w8:pE",
+  "tab_id": "w8:t3",
+  "workspace_id": "w8",
+  "terminal_title_stripped": "alex@herdr: ~/src/garden-club-site",
+  "focused": false
+ },
+ {
+  "agent": "claude",
+  "agent_status": "idle",
+  "agent_session": {
+   "source": "herdr:claude",
+   "agent": "claude",
+   "kind": "id",
+   "value": "d760bf26-4c3b-4337-aefa-088ccf43ee98"
+  },
+  "cwd": "/home/alex/src/portfolio-site",
+  "pane_id": "w8:p4",
+  "tab_id": "w8:t4",
+  "workspace_id": "w8",
+  "terminal_title_stripped": "Website review",
+  "focused": false
+ },
+ {
+  "agent": "claude",
+  "agent_status": "idle",
+  "agent_session": {
+   "source": "herdr:claude",
+   "agent": "claude",
+   "kind": "id",
+   "value": "a76e1f38-d6c6-415b-8e9c-df13246ca4f4"
+  },
+  "cwd": "/home/alex/src/homelab",
+  "pane_id": "w8:p7",
+  "tab_id": "w8:t7",
+  "workspace_id": "w8",
+  "terminal_title_stripped": "Weekly security report",
+  "focused": false
+ },
+ {
+  "agent": "claude",
+  "agent_status": "idle",
+  "agent_session": {
+   "source": "herdr:claude",
+   "agent": "claude",
+   "kind": "id",
+   "value": "1ba322b9-4f1a-4414-a45b-70f793fa7ed3"
+  },
+  "cwd": "/home/alex/src/budget-tracker",
+  "pane_id": "w8:p8",
+  "tab_id": "w8:t8",
+  "workspace_id": "w8",
+  "terminal_title_stripped": "Monthly summary",
+  "focused": false
+ },
+ {
+  "agent": "claude",
+  "agent_status": "idle",
+  "agent_session": {
+   "source": "herdr:claude",
+   "agent": "claude",
+   "kind": "id",
+   "value": "a13f0036-98f1-4953-a62a-61ccc1ab98ef"
+  },
+  "cwd": "/home/alex/src/notes-app",
+  "pane_id": "wC:p1",
+  "tab_id": "wC:t1",
+  "workspace_id": "wC",
+  "terminal_title_stripped": "Draft a letter",
+  "focused": false
+ }
+]

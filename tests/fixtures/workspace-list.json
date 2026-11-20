@@ -1,0 +1,162 @@
+[
+ {
+  "workspace_id": "w8",
+  "number": 1,
+  "label": "Main",
+  "focused": false,
+  "pane_count": 5,
+  "tab_count": 4,
+  "active_tab_id": "w8:t3",
+  "agent_status": "idle"
+ },
+ {
+  "workspace_id": "wC",
+  "number": 2,
+  "label": "Scratch",
+  "focused": false,
+  "pane_count": 1,
+  "tab_count": 1,
+  "active_tab_id": "wC:t1",
+  "agent_status": "idle"
+ },
+ {
+  "workspace_id": "w9",
+  "number": 3,
+  "label": "Writing",
+  "focused": false,
+  "pane_count": 1,
+  "tab_count": 1,
+  "active_tab_id": "w9:t4",
+  "agent_status": "unknown"
+ },
+ {
+  "workspace_id": "wB",
+  "number": 4,
+  "label": "Smart Home",
+  "focused": false,
+  "pane_count": 1,
+  "tab_count": 1,
+  "active_tab_id": "wB:t1",
+  "agent_status": "idle"
+ },
+ {
+  "workspace_id": "wD",
+  "number": 5,
+  "label": "Marketplace",
+  "focused": false,
+  "pane_count": 1,
+  "tab_count": 1,
+  "active_tab_id": "wD:t1",
+  "agent_status": "idle"
+ },
+ {
+  "workspace_id": "wE",
+  "number": 6,
+  "label": "Finance",
+  "focused": false,
+  "pane_count": 1,
+  "tab_count": 1,
+  "active_tab_id": "wE:t1",
+  "agent_status": "idle"
+ },
+ {
+  "workspace_id": "wF",
+  "number": 7,
+  "label": "Research",
+  "focused": false,
+  "pane_count": 1,
+  "tab_count": 1,
+  "active_tab_id": "wF:t1",
+  "agent_status": "idle"
+ },
+ {
+  "workspace_id": "wG",
+  "number": 8,
+  "label": "client-site",
+  "focused": false,
+  "pane_count": 2,
+  "tab_count": 1,
+  "active_tab_id": "wG:t1",
+  "agent_status": "idle"
+ },
+ {
+  "workspace_id": "wH",
+  "number": 9,
+  "label": "idlegame",
+  "focused": false,
+  "pane_count": 1,
+  "tab_count": 1,
+  "active_tab_id": "wH:t1",
+  "agent_status": "working"
+ },
+ {
+  "workspace_id": "wJ",
+  "number": 10,
+  "label": "daycare-site",
+  "focused": false,
+  "pane_count": 2,
+  "tab_count": 1,
+  "active_tab_id": "wJ:t1",
+  "agent_status": "idle"
+ },
+ {
+  "workspace_id": "wK",
+  "number": 11,
+  "label": "ideas",
+  "focused": false,
+  "pane_count": 1,
+  "tab_count": 1,
+  "active_tab_id": "wK:t1",
+  "agent_status": "unknown"
+ },
+ {
+  "workspace_id": "wM",
+  "number": 12,
+  "label": "bouncing-balls",
+  "focused": false,
+  "pane_count": 1,
+  "tab_count": 1,
+  "active_tab_id": "wM:t1",
+  "agent_status": "done"
+ },
+ {
+  "workspace_id": "wN",
+  "number": 13,
+  "label": "family-tree",
+  "focused": false,
+  "pane_count": 1,
+  "tab_count": 1,
+  "active_tab_id": "wN:t1",
+  "agent_status": "done"
+ },
+ {
+  "workspace_id": "wP",
+  "number": 14,
+  "label": "homelab",
+  "focused": false,
+  "pane_count": 1,
+  "tab_count": 1,
+  "active_tab_id": "wP:t1",
+  "agent_status": "idle"
+ },
+ {
+  "workspace_id": "wQ",
+  "number": 15,
+  "label": "virtual-home",
+  "focused": false,
+  "pane_count": 1,
+  "tab_count": 1,
+  "active_tab_id": "wQ:t1",
+  "agent_status": "idle"
+ },
+ {
+  "workspace_id": "wR",
+  "number": 16,
+  "label": "herdr_mobileview",
+  "focused": true,
+  "pane_count": 1,
+  "tab_count": 1,
+  "active_tab_id": "wR:t1",
+  "agent_status": "working"
+ }
+]

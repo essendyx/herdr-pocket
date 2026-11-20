@@ -1,0 +1,11 @@
+● Fertig. Alles ist eingerichtet.
+
+                                                                                                           [-]
+✦ Heads up · Die neue Grenze von 2 Stunden verschiebt Stufe 2 von Tag 4 auf Tag 9,
+  weil die Abwesenheit weniger Ertrag bringt.
+  1: Learn more   2: Knew this already   0: Dismiss
+                                                                       ✔ Update installed · /restart to apply
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+───────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ⏵⏵ auto mode on (shift+tab to cycle)
