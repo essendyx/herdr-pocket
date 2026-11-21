@@ -155,7 +155,11 @@ svg { display: block; }
 .perm .opts button { text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; gap: 10px; align-items: center; }
 .perm .opts button kbd { font-family: var(--font-mono); font-size: 12px; background: var(--surface-2); border-radius: 6px; padding: 1px 7px; color: var(--muted); }
 .perm .opts button:first-child { border-color: var(--accent); }
-.thinking { display: flex; align-items: center; gap: 10px; color: var(--working); font-size: 14px; font-weight: 500; }
+.msg-user.pending { opacity: 0.6; outline: 1px dashed currentColor; outline-offset: -1px; }
+.msg-user.pending small { display: block; margin-top: 4px; font-size: 12px; opacity: 0.85; }
+.thinking { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; color: var(--working); font-size: 14px; font-weight: 500; }
+.thinking small { color: var(--muted); font-weight: 400; font-size: 13px; }
+.thinking .dur { font-variant-numeric: tabular-nums; }
 .thinking i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: blink 1.2s infinite; }
 .thinking i:nth-child(2) { animation-delay: 0.2s; }
 .thinking i:nth-child(3) { animation-delay: 0.4s; }
@@ -531,3 +535,20 @@ input, textarea, select { font-size: 16px !important; }
 .panelcard pre { max-height: 55vh; overflow-y: auto; }
 .inrow { position: relative; }
 .slash button b { overflow-wrap: anywhere; }
+
+/* Verbrauch einer Sitzung */
+.sheet.usage .ubig { font-size: 30px; font-weight: 700; margin: 4px 0 14px; font-variant-numeric: tabular-nums; }
+.sheet.usage .ubig small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); }
+.sheet.usage .ubox { background: var(--surface-2); border-radius: 12px; padding: 4px 12px; margin-bottom: 12px; }
+.sheet.usage .urow { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.sheet.usage .urow:last-child { border-bottom: 0; }
+.sheet.usage .urow.sub { padding-left: 14px; color: var(--muted); font-size: 13px; }
+.sheet.usage .urow b { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
+.sheet.usage .urow b small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
+
+/* Frage mit mehreren Teilfragen */
+.perm .qstep { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.perm .qtabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.perm .qtabs span { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.perm .qtabs span.done { color: var(--fg); }
+.perm .qtabs span.cur { color: var(--fg); border-color: currentColor; font-weight: 600; }

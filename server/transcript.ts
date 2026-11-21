@@ -9,7 +9,7 @@ export type FeedItem =
   | { t: "tool"; k: string; a: string; s: "ok" | "run" | "err" }
   | { t: "diff"; f: string; add: number; del: number; lines: string[] };
 export type PlanStep = [string, "done" | "run" | "todo"];
-export type SessionInfo = { last: number; feed: FeedItem[]; plan: PlanStep[]; subs: number; ctx: number; model: string | null; effort: string | null; mode: string | null; changes: FeedItem[] };
+export type SessionInfo = { last: number; pending: string[]; feed: FeedItem[]; plan: PlanStep[]; subs: number; ctx: number; model: string | null; effort: string | null; mode: string | null; changes: FeedItem[] };
 
 const MAX_DIFF_LINES = 40;
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
@@ -54,6 +54,8 @@ export function parseTranscript(text: string): SessionInfo {
   const openAgents = new Set<string>();
   let compactTrigger = "";
   let last = 0;
+  // Warteschlange von Claude Code: eingereiht, aber noch nicht aufgenommen (null = ohne Text, z. B. interne Meldungen)
+  const queue: (string | null)[] = [];
 
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
@@ -65,6 +67,31 @@ export function parseTranscript(text: string): SessionInfo {
       if (ts > last) last = ts;
     }
     if (!o || typeof o !== "object") continue;
+
+    if (o.type === "queue-operation") {
+      const c = typeof o.content === "string" ? o.content : null;
+      if (o.operation === "enqueue") queue.push(c);
+      else if (o.operation === "dequeue") queue.shift();
+      else if (o.operation === "remove") {
+        // Entfernt wird mit Text, eingereiht wurde manchmal ohne: dann den ersten Eintrag ohne Text streichen
+        let i = c === null ? 0 : queue.indexOf(c);
+        if (i < 0) i = queue.indexOf(null);
+        if (i >= 0) queue.splice(i, 1);
+      }
+      continue;
+    }
+    // Während Claude arbeitet, reiht Claude Code neue Nachrichten ein und reicht sie mitten in der Runde nach.
+    // Sie stehen dann nicht als user-Zeile im Verlauf, sondern als Anhang. Nur die vom Menschen zeigen.
+    const att = o.type === "attachment" && !o.isSidechain ? o.attachment : null;
+    if (att && att.type === "queued_command" && att.commandMode === "prompt" && att.origin?.kind === "human") {
+      const t = userText(att.prompt);
+      if (t && t.trim() && !isInternal(t)) {
+        feed.push({ t: "user", v: t });
+        const ts = Date.parse(o.timestamp);
+        if (ts > last) last = ts;
+      }
+      continue;
+    }
 
     if (o.type === "permission-mode") { mode = o.permissionMode ?? mode; continue; }
     if (o.type === "system" && o.subtype === "compact_boundary") { compactTrigger = String(o.compactMetadata?.trigger || ""); continue; }
@@ -148,7 +175,8 @@ export function parseTranscript(text: string): SessionInfo {
   if (!plan.length && tasks.size) {
     plan = [...tasks.values()].map(t => [t.title, t.status === "completed" ? "done" : t.status === "in_progress" ? "run" : "todo"]);
   }
-  return { last, feed, plan, subs: openAgents.size, ctx, model, effort, mode, changes: feed.filter(x => x.t === "diff") };
+  const pending = queue.filter((c): c is string => !!c && !!c.trim() && !isInternal(c));
+  return { last, pending, feed, plan, subs: openAgents.size, ctx, model, effort, mode, changes: feed.filter(x => x.t === "diff") };
 }
 
 // Große Verläufe nur ab dem Ende lesen (ab einer Zeilengrenze), damit der Server nicht blockiert

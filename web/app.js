@@ -340,21 +340,41 @@
     }
     if (d.kind === "question") {
       const opts = d.options.map((o, i) => ({ o, i, desc: (d.descs || [])[i] || "" })).filter(x => x.i + 1 !== d.freeText);
-      return '<div class="perm ask-q"><div class="q">' + esc(d.question || "Frage") + (d.title ? '<small>' + esc(d.title) + '</small>' : "") + '</div>' +
+      // Mehrere Teilfragen: Fortschritt und Reiter (beantwortete abgehakt), statt der rohen Reiterzeile aus dem Terminal
+      const tabs = d.tabs && d.tabs.length > 1
+        ? '<div class="qstep">Frage ' + (d.step + 1) + ' von ' + d.tabs.length + '</div><div class="qtabs">' + d.tabs.map((t, i) => '<span class="' + (i === d.step ? "cur" : t.done ? "done" : "") + '">' + (t.done && i !== d.step ? "✓ " : "") + esc(t.label) + '</span>').join("") + '</div>'
+        : "";
+      return '<div class="perm ask-q">' + tabs + '<div class="q">' + esc(d.question || "Frage") + (d.title && !tabs ? '<small>' + esc(d.title) + '</small>' : "") + '</div>' +
         '<div class="opts">' + opts.map(x => '<button type="button" data-opt="' + (x.i + 1) + '" data-hash="' + esc(d.hash) + '"><kbd>' + (x.i + 1) + '</kbd><span class="ot">' + esc(x.o) + (x.desc ? '<small>' + esc(x.desc) + '</small>' : "") + '</span></button>').join("") + '</div>' +
         (d.freeText ? '<div class="hint">Oder eigene Antwort unten ins Eingabefeld schreiben und senden.</div>' : "") + '</div>';
     }
     return '<div class="perm"><div class="q">' + esc(d.question || "Freigabe nötig") + (d.title ? '<small>' + esc(d.title) + '</small>' : "") + '</div>' + (d.detail ? '<code>' + esc(d.detail) + '</code>' : "") +
       '<div class="opts">' + d.options.map((o, i) => '<button type="button" data-opt="' + (i + 1) + '" data-hash="' + esc(d.hash) + '"><kbd>' + (i + 1) + '</kbd>' + esc(o) + '</button>').join("") + '</div></div>';
   }
+  function fmtDur(s) {
+    s = Math.max(0, Math.floor(s));
+    if (s < 60) return s + " s";
+    if (s < 3600) return Math.floor(s / 60) + " Min " + (s % 60) + " s";
+    return Math.floor(s / 3600) + " Std " + Math.floor((s % 3600) / 60) + " Min";
+  }
+  // Laufende Runde: seit wann, wie viele Tokens, was Claude gerade tut (aus der Statuszeile im Terminal)
+  function thinkingHTML(a, F) {
+    const sp = F.spinner;
+    const start = F.startAt || a.since || Date.now();
+    const bits = [];
+    if (sp && sp.tokens) bits.push(esc(sp.tokens.replace(".", ",")) + " Tokens");
+    if (sp && sp.note) bits.push(sp.note === "thinking" ? "denkt nach" : esc(sp.note.replace(/^thought for (\d+)s$/, "hat $1 s nachgedacht")));
+    return '<div class="thinking"><i></i><i></i><i></i><span>Arbeitet seit <span class="dur" data-start="' + start + '">' + fmtDur((Date.now() - start) / 1000) + '</span></span>' +
+      (bits.length ? '<small>' + bits.join(" · ") + '</small>' : "") + '</div>';
+  }
   function feedHTML(a) {
     const F = feeds[a.id];
     if (!F) return '<div class="loading">Lade Verlauf …</div>';
     let h = "", grp = [];
-    const flush = () => {
+    const flush = (live) => {
       if (!grp.length) return;
       if (grp.length === 1) { h += itemHTML(grp[0]); grp = []; return; }
-      const run = grp.some(x => x.s === "run");
+      const run = live || grp.some(x => x.s === "run");
       const nd = grp.filter(x => x.t === "diff").length;
       h += '<details class="work"' + (run ? " open" : "") + '><summary><b>' + (run ? "Arbeitet gerade" : "Hat gearbeitet") + '</b>' + grp.length + ' Schritte' + (nd ? ' · ' + nd + (nd === 1 ? " Datei" : " Dateien") + ' geändert' : "") + CHEV + '</summary><div>' + grp.map(itemHTML).join("") + '</div></details>';
       grp = [];
@@ -362,8 +382,11 @@
     if (!F.feed.length && F.screen) h += '<div class="screenfeed">' + esc(F.screen) + '</div>';
     if (!F.feed.length && !F.screen) h += '<div class="empty">Noch kein Verlauf. Schreib die erste Nachricht.</div>';
     F.feed.forEach(x => { if (x.t === "tool" || x.t === "diff") grp.push(x); else { flush(); h += itemHTML(x); } });
-    flush();
-    if (a.status === "working") h += '<div class="thinking"><i></i><i></i><i></i>Arbeitet</div>';
+    // Die letzte Gruppe gehört zur laufenden Runde, auch wenn gerade kein Werkzeug läuft (Claude denkt zwischen zwei Schritten)
+    flush(a.status === "working" && F.feed.length && (F.feed[F.feed.length - 1].t === "tool" || F.feed[F.feed.length - 1].t === "diff"));
+    if (a.status === "working") h += thinkingHTML(a, F);
+    // Während der Arbeit geschickt: Claude Code hat sie eingereiht und nimmt sie nach dem laufenden Schritt auf
+    (F.pending || []).forEach(v => { h += '<div class="msg-user pending">' + imgHTML(v) + '<small>wartet, Claude liest sie nach dem laufenden Schritt</small></div>'; });
     if (a.status === "blocked" && a.dialog) h += dialogHTML(a.dialog);
     if (F.auth) h += authHTML(F.auth);
     if (F.panel) h += panelHTML(F.panel);
@@ -440,6 +463,7 @@
         '<div class="gutter" style="padding-block:8px 0;background:var(--bg)"><div class="segw"><button type="button" data-view="chat" aria-pressed="' + (state.view === "chat") + '">Chat</button><button type="button" data-view="changes" aria-pressed="' + (state.view === "changes") + '">Änderungen</button><button type="button" data-view="term" aria-pressed="' + (state.view === "term") + '">Terminal</button></div></div>' +
         (!isClaude(a) ? '<div class="cfgrow gutter"><span class="cfg kind-' + esc(a.kind) + '">' + esc(KIND_LONG[a.kind] || a.kind) + '</span></div>' : '<div class="cfgrow gutter">' +
           '<button type="button" class="cfg ctx' + (a.ctx >= 80 ? " hot" : "") + '" data-ctx title="Kontext-Füllstand">' + ringSVG(a.ctx || 0) + (a.ctx || 0) + ' %</button>' +
+          (a.usage && a.usage.msgs ? '<button type="button" class="cfg" data-usage title="Token-Verbrauch und Kosten zu API-Preisen"><span class="k">API</span>' + usd(a.usage.cost) + '</button>' : "") +
           '<button type="button" class="cfg mode-' + (a.mode === "acceptEdits" ? "edits" : a.mode) + '" data-cfg><span class="k">Modus</span>' + esc(mode.s) + CHEV + '</button>' +
           '<button type="button" class="cfg" data-cfg><span class="k">Modell</span>' + esc(modelName(a.model)) + CHEV + '</button>' +
           '<button type="button" class="cfg" data-cfg><span class="k">Effort</span>' + esc(EFF[a.effort] || a.effort || "?") + CHEV + '</button>' +
@@ -580,6 +604,23 @@
       '<div class="field" id="firstMsg"><label for="nt">Erste Nachricht (optional)</label><textarea id="nt" rows="3" placeholder="Was soll der Agent tun?"></textarea></div>' +
       '<div class="btnrow"><button type="button" class="btn primary" data-start style="flex:1">Starten</button><button type="button" class="btn" data-close-btn>Abbrechen</button></div></div></div>';
   }
+  // Verbrauch: Zahlen kurz und deutsch ("241,7 Mio", "818k"), Kosten in US-Dollar wie in der API-Preisliste
+  const de = (x, d) => x.toFixed(d).replace(".", ",");
+  const tok = x => x >= 1e6 ? de(x / 1e6, 1) + " Mio" : x >= 1e4 ? Math.round(x / 1000) + "k" : x >= 1000 ? de(x / 1000, 1) + "k" : String(x);
+  const usd = x => (x >= 100 ? String(Math.round(x)) : x >= 0.01 ? de(x, 2) : x > 0 ? "< 0,01" : "0") + " $";
+  const exactModel = id => { const m = String(id).match(/(opus|sonnet|haiku|fable|mythos)-(\d+)(?:-(\d)(?!\d))?/); return m ? m[1][0].toUpperCase() + m[1].slice(1) + " " + m[2] + (m[3] ? "." + m[3] : "") : id; };
+  function usageSheet(u) {
+    pending = [null];
+    const row = (k, v, cls) => '<div class="urow' + (cls ? " " + cls : "") + '"><span>' + k + '</span><b>' + v + '</b></div>';
+    const input = u.in + u.cr + u.cw;
+    $("#sheetHost").innerHTML = '<div class="sheet-wrap" data-close><div class="sheet gutter usage" role="dialog" aria-label="Verbrauch"><div class="grab"></div><h2>Verbrauch dieser Sitzung</h2>' +
+      '<div class="ubig">' + usd(u.cost) + '<small>zu API-Listenpreisen</small></div>' +
+      '<div class="ubox">' + row("Input gesamt", tok(input) + " Tokens") + row("davon aus dem Cache gelesen", tok(u.cr), "sub") + row("in den Cache geschrieben", tok(u.cw), "sub") + row("neu, ohne Cache", tok(u.in), "sub") +
+        row("Output", tok(u.out) + " Tokens") + row("Antworten", String(u.msgs) + (u.subMsgs ? " · " + u.subMsgs + " von Subagents" : "")) + '</div>' +
+      (u.models && u.models.length > 1 ? '<div class="ubox">' + u.models.map(m => row(esc(exactModel(m.model)), usd(m.cost) + '<small>' + tok(m.in + m.cr + m.cw) + " rein · " + tok(m.out) + " raus</small>")).join("") + '</div>' : "") +
+      '<div class="hint">Mit dem Abo zahlst du das nicht. So viel würde dieselbe Arbeit über die API kosten. Gelesener Cache ist sehr günstig, deshalb kosten die vielen Input-Tokens vergleichsweise wenig.</div>' +
+      '<div class="stack"><button type="button" class="btn" data-act="0">Schließen</button></div></div></div>';
+  }
   function confirmSheet(title, text, btns) {
     pending = btns.map(b => b.act || null);
     $("#sheetHost").innerHTML = '<div class="sheet-wrap" data-close><div class="sheet gutter" role="dialog" aria-label="' + esc(title) + '"><div class="grab"></div><h2>' + esc(title) + '</h2>' + (text ? '<div class="hint">' + esc(text) + '</div>' : "") +
@@ -640,10 +681,21 @@
 
   // Daten laden
   async function loadFeed(id) {
+    const prev = feeds[id];
     try { feeds[id] = await API.get("/api/agents/" + encodeURIComponent(id) + "/feed"); } catch (_) { return; }
+    // Beginn der laufenden Runde aus der Statuszeile; kleine Abweichungen beim Nachladen nicht übernehmen, sonst springt die Uhr
+    const sp = feeds[id].spinner;
+    if (sp && sp.secs != null) {
+      const start = Date.now() - sp.secs * 1000;
+      feeds[id].startAt = prev && prev.startAt && Math.abs(prev.startAt - start) < 3000 ? prev.startAt : start;
+    }
     if (state.agent === id) renderMain();
   }
   // Anmeldefenster u. Ä. stehen nur im Terminal und ändern den Verlauf nicht: bei offenem, laufendem Agent regelmäßig nachsehen
+  // Laufzeit im Chat jede Sekunde weiterzählen, ohne den Verlauf neu zu zeichnen
+  setInterval(() => {
+    document.querySelectorAll(".thinking .dur").forEach(el => { el.textContent = fmtDur((Date.now() - Number(el.dataset.start)) / 1000); });
+  }, 1000);
   setInterval(() => {
     const a = state.agent && byId(state.agent);
     if (a && state.view === "chat" && document.visibilityState === "visible" && (a.status === "working" || (feeds[a.id] || {}).auth || (feeds[a.id] || {}).panel)) loadFeed(a.id);
@@ -923,6 +975,7 @@
     }
     if (t.dataset.opt) { answer(state.agent, Number(t.dataset.opt), t.dataset.hash); return; }
     if (t.hasAttribute("data-plan")) { state.planOpen = !state.planOpen; renderMain(); return; }
+    if (t.hasAttribute("data-usage")) { const a = byId(state.agent); if (a && a.usage) usageSheet(a.usage); return; }
     if (t.hasAttribute("data-ctx")) {
       const a = byId(state.agent); if (!a) return;
       if (a.ctx >= 80) confirmSheet("Kontext fast voll", "Noch " + (100 - a.ctx) + " % frei. /compact fasst den bisherigen Verlauf zusammen und macht Platz.", [

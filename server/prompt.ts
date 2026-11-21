@@ -4,7 +4,7 @@ import { createHash } from "crypto";
 // kind: "permission" = Freigabe (Bash, Write ...), "question" = Auswahlfrage von Claude (AskUserQuestion)
 // descs: Beschreibung je Option (nur bei Fragen), freeText: Nummer der Option "Type something." oder null
 // "trust" = Ordner-Vertrauen beim ersten Start in einem Ordner: Optionen ohne Nummern, Auswahl per Pfeiltasten ab cursor
-export type Dialog = { hash: string; kind: "permission" | "question" | "trust"; title: string; question: string; detail: string; options: string[]; descs: string[]; freeText: number | null; cursor?: number };
+export type Dialog = { hash: string; kind: "permission" | "question" | "trust"; title: string; question: string; detail: string; options: string[]; descs: string[]; freeText: number | null; cursor?: number; tabs?: { label: string; done: boolean }[]; step?: number };
 
 const OPTION = /^\s*(?:❯\s*)?(\d+)\.\s+(.*\S)\s*$/;
 const RULE = /^\s*[─━]{10,}\s*$/;
@@ -80,9 +80,21 @@ export function parseDialog(screen: string): Dialog | null {
   let top = first - 1;
   while (top >= 0 && !RULE.test(lines[top])) top--;
   const block = lines.slice(top + 1, first).map(l => l.trim()).filter(Boolean);
-  const question = block.length ? block[block.length - 1] : "";
+  let question = block.length ? block[block.length - 1] : "";
   // Fragen haben oben einen Reiter wie "☐ Test"
-  const title = block[0] && block[0] !== question ? block[0].replace(/^[☐☒✔✓■□]\s*/, "") : "";
+  let title = block[0] && block[0] !== question ? block[0].replace(/^[☐☒✔✓■□]\s*/, "") : "";
+  // Mehrere Teilfragen: Reiterzeile "← ☒ Codex ☐ Conda-Envs ✔ Submit →"; beantwortete sind abgehakt, die erste offene ist dran
+  let tabs: { label: string; done: boolean }[] | undefined, step: number | undefined;
+  if (kind === "question" && block[0] && TABS.test(block[0])) {
+    tabs = [...block[0].matchAll(/([☐☒✔✓■□])\s*(.+?)(?=\s+[☐☒✔✓■□]|\s*→)/g)]
+      .map(m => ({ label: m[2].trim(), done: m[1] !== "☐" && m[1] !== "□" }))
+      .filter(t => t.label !== "Submit");
+    const open = tabs.findIndex(t => !t.done);
+    step = open >= 0 ? open : tabs.length - 1;
+    title = tabs[step]?.label || "";
+  }
+  // Lange Fragen bricht das Terminal um: alles unter dem Reiter gehört zur Frage
+  if (kind === "question" && block.length > 1) question = block.slice(1).filter(l => !/^Tip:/.test(l)).join(" ");
   if (review) {
     // Zusammenfassung der Antworten als Detail anzeigen
     const hash = createHash("sha256").update(["review", block.join("\n"), options.join("|")].join("\n")).digest("hex").slice(0, 16);
@@ -103,7 +115,9 @@ export function parseDialog(screen: string): Dialog | null {
   const detail = detailLines.join("\n");
   const hash = createHash("sha256").update([kind, title, detail, question, options.join("|"), descs.join("|")].join("\n")).digest("hex").slice(0, 16);
   const fi = kind === "question" ? options.findIndex(o => FREE.test(o)) : -1;
-  return { hash, kind, title, question, detail, options, descs, freeText: fi >= 0 ? fi + 1 : null };
+  const d: Dialog = { hash, kind, title, question, detail: kind === "question" ? "" : detail, options, descs, freeText: fi >= 0 ? fi + 1 : null };
+  if (tabs) { d.tabs = tabs; d.step = step; }
+  return d;
 }
 
 // Nummer der ablehnenden Option ("No ..."), sonst die letzte
@@ -176,4 +190,27 @@ export function parsePanel(screen: string, claude = false): Panel | null {
   if (!block.length) return null;
   const ind = Math.min(...block.filter(l => l.trim()).map(l => l.match(/^\s*/)![0].length));
   return { text: block.map(l => l.slice(ind).replace(/\s+$/, "")).join("\n"), footer };
+}
+
+// Statuszeile, solange Claude arbeitet, z. B. "* Vibing… (10m 47s · ↓ 11.2k tokens · thinking)".
+// Zeigt im Chat, dass wirklich noch etwas passiert und seit wann.
+export type Spinner = { secs: number | null; tokens: string; note: string };
+const SPIN = /^\s*[·✢✳✶✻✽*]\s+[A-Z][\w'-]*…(?:\s+\((.*)\))?\s*$/;
+export function parseSpinner(screen: string): Spinner | null {
+  const lines = screen.split("\n");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const m = lines[i].match(SPIN);
+    if (!m) continue;
+    let secs: number | null = null, tokens = "", note = "";
+    for (const part of (m[1] || "").split("·").map(x => x.trim()).filter(Boolean)) {
+      const t = part.match(/^[↑↓]?\s*([\d.,]+k?)\s+tokens?$/);
+      if (/^(\d+h\s*)?(\d+m\s*)?(\d+s)?$/.test(part)) {
+        const n = (u: string) => Number(part.match(new RegExp("(\\d+)" + u))?.[1] || 0);
+        secs = n("h") * 3600 + n("m") * 60 + n("s");
+      } else if (t) tokens = t[1];
+      else if (!/esc to interrupt/.test(part)) note = note || part;
+    }
+    return { secs, tokens, note };
+  }
+  return null;
 }

@@ -113,3 +113,34 @@ test("Letzte Aktivität: Zeit der letzten echten Nachricht, nicht der Zeilen bei
   expect(parseTranscript(lines).last).toBe(Date.parse("2026-11-20T18:01:00.000Z"));
   expect(parseTranscript("").last).toBe(0);
 });
+
+test("Nachricht, die während der Arbeit nachgereicht wurde, erscheint im Chat (nur vom Menschen)", () => {
+  const L = (o: any) => JSON.stringify(o);
+  const t = [
+    L({ type: "user", timestamp: "2026-11-21T22:50:00Z", message: { role: "user", content: "Erste Frage" } }),
+    L({ type: "assistant", timestamp: "2026-11-21T22:50:10Z", message: { model: "m", content: [{ type: "text", text: "Ich schaue nach." }] } }),
+    L({ type: "attachment", timestamp: "2026-11-21T22:51:06Z", attachment: { type: "queued_command", prompt: "Und bitte auch das hier", commandMode: "prompt", origin: { kind: "human" }, humanTurn: true } }),
+    L({ type: "attachment", timestamp: "2026-11-21T22:51:07Z", attachment: { type: "queued_command", prompt: "<task-notification>x</task-notification>", commandMode: "task-notification", origin: { kind: "task-notification" } } }),
+    L({ type: "attachment", timestamp: "2026-11-21T22:51:08Z", attachment: { type: "queued_command", prompt: "Nachricht einer anderen Sitzung", commandMode: "prompt", origin: { kind: "peer" } } }),
+  ].join("\n");
+  const s = parseTranscript(t);
+  expect(s.feed.filter(x => x.t === "user").map(x => (x as any).v)).toEqual(["Erste Frage", "Und bitte auch das hier"]);
+  expect(s.last).toBe(Date.parse("2026-11-21T22:51:06Z"));
+});
+
+test("Eingereihte, noch nicht aufgenommene Nachrichten stehen in pending", () => {
+  const L = (o: any) => JSON.stringify(o);
+  const q = (operation: string, content?: string, reason?: string) => L({ type: "queue-operation", operation, timestamp: "2026-11-21T22:51:00Z", ...(content !== undefined ? { content } : {}), ...(reason ? { reason } : {}) });
+  const t = [
+    L({ type: "user", timestamp: "2026-11-21T22:50:00Z", message: { role: "user", content: "Los" } }),
+    q("enqueue", "schon aufgenommen"), q("remove", "schon aufgenommen", "absorbed_mid_turn"),
+    q("enqueue", "erste wartende"), q("dequeue"),
+    q("enqueue", "<task-notification>x</task-notification>"),
+    q("enqueue"),
+    q("enqueue", "noch offen"),
+  ].join("\n");
+  expect(parseTranscript(t).pending).toEqual(["noch offen"]);
+  // Ohne Text eingereiht, mit Text entfernt: darf keinen anderen Eintrag hängen lassen
+  const t2 = [q("enqueue"), q("remove", "<agent-message from=\"a\">", "absorbed_mid_turn"), q("enqueue", "Anmeldedaten"), q("dequeue")].join("\n");
+  expect(parseTranscript(t2).pending).toEqual([]);
+});

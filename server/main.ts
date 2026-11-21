@@ -12,12 +12,13 @@ import { Actions, ActionError } from "./actions.ts";
 import { PromptQueue } from "./queue.ts";
 import { Activity, LABEL } from "./activity.ts";
 import { readSession, transcriptPath, type SessionInfo } from "./transcript.ts";
+import { sessionUsage } from "./cost.ts";
 import { accessVerifier, checkCsrf } from "./auth.ts";
 import { loadConfig, ConfigError } from "./config.ts";
 import { imagePath } from "./images.ts";
 import { pinKey, setPin, isPinned } from "./pins.ts";
 import { markSeen, isSeen } from "./seen.ts";
-import { parseAuth, parsePanel } from "./prompt.ts";
+import { parseAuth, parsePanel, parseSpinner } from "./prompt.ts";
 import { listCommands, type Cmd } from "./commands.ts";
 import { STATE_DIR, ensureDir, readJson, writeJson, DEFAULT_SETTINGS, type Settings } from "./store.ts";
 import { call } from "./herdr.ts";
@@ -84,7 +85,10 @@ async function stateJson() {
     const dialog = a.status === "blocked" ? await actions.dialog(a.id).catch(() => null) : null;
     const tip = tipInfo(TIP_FILE, a.sessionId);
     const lastActive = i?.last || mtimeOf(a) || null;
-    return { ...a, pinned: isPinned(pins, a), seen: isSeen(seen, { ...a, lastActive }), dialog, tip, lastActive, ctx: i?.ctx ?? 0, model: i?.model ?? null, effort: i?.effort ?? null, mode: i?.mode ?? null, plan: i?.plan ?? [], subs: i?.subs ?? 0, queue: queue.list(a.id), hasHistory: !!i };
+    // Token-Verbrauch der Sitzung samt Subagents; liest nur, was seit dem letzten Mal dazugekommen ist
+    const tp = a.sessionId && mtimeOf(a) ? transcriptPath(a.cwd, a.sessionId) : "";
+    const usage = tp ? await sessionUsage(tp, tp.replace(/\.jsonl$/, "") + "/subagents").catch(() => null) : null;
+    return { ...a, usage, pinned: isPinned(pins, a), seen: isSeen(seen, { ...a, lastActive }), dialog, tip, lastActive, ctx: i?.ctx ?? 0, model: i?.model ?? null, effort: i?.effort ?? null, mode: i?.mode ?? null, plan: i?.plan ?? [], subs: i?.subs ?? 0, queue: queue.list(a.id), hasHistory: !!i };
   }));
   return { ...s, agents, usage: usageView(readJson("usage.json", null)) };
 }
@@ -186,7 +190,11 @@ async function route(req: Request, url: URL): Promise<Response> {
     // Maßgeblich ist das Terminal: steht dort kein Tipp mehr (z. B. nach "Dismiss"), gibt es keine Karte, auch wenn die Plugin-Datei noch hinterherhinkt
     return json({ feed: i?.feed.slice(-300) ?? [], screen, dialog, tip: tipInfoNow && tipScreen ? { ...tipInfoNow, options: tipScreen.options } : null, auth,
       // Sonstiges offenes Menü im Terminal (z. B. /mcp): im Chat zeigen, sonst sieht man es nur im Terminal
-      panel: !auth && !tipScreen && !dialog ? parsePanel(visible, a.kind === "claude") : null });
+      panel: !auth && !tipScreen && !dialog ? parsePanel(visible, a.kind === "claude") : null,
+      // Statuszeile beim Arbeiten (Dauer, Tokens), damit man sieht, dass wirklich noch etwas passiert
+      spinner: a.status === "working" ? parseSpinner(visible) : null,
+      // Eingereiht, aber von Claude noch nicht aufgenommen; nach Ende der Runde ist die Liste ohnehin leer
+      pending: a.status === "working" || a.status === "blocked" ? i?.pending ?? [] : [] });
   }
   // Slash-Befehle für die Autovervollständigung, je Projektordner eine Minute zwischengespeichert
   if (req.method === "GET" && (r = m(/^\/api\/agents\/([^/]+)\/commands$/))) {

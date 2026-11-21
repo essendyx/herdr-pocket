@@ -6,7 +6,7 @@
 // Ergebnis: docs/screenshots/*.png
 const { chromium } = require(process.env.PLAYWRIGHT_CORE || "playwright-core");
 const fs = require("fs"), path = require("path");
-const ROOT = path.join(__dirname, ".."), WEB = path.join(ROOT, "web"), OUT = path.join(ROOT, "docs/screenshots");
+const ROOT = path.join(__dirname, ".."), WEB = path.join(ROOT, "web"), OUT = process.env.SHOTS_OUT || path.join(ROOT, "docs/screenshots");
 
 const now = Date.now(), min = 60000, H = 3600000;
 const perm = (h, q, det, opts) => ({ hash: "d" + h, kind: "permission", title: "Bash command", question: q, detail: det, options: opts, descs: opts.map(() => ""), freeText: null });
@@ -15,10 +15,11 @@ const agents = [
   { ...base, id: "w1:p1", kind: "claude", ws: "w1", tab: "w1:t1", project: "webshop", cwd: "/home/alex/src/webshop", title: "Checkout-Seite überarbeiten", status: "blocked", sessionId: "s1", since: now - 3 * min, lastActive: now - min,
     dialog: perm(1, "Do you want to proceed?", "npm run deploy -- --env staging", ["Yes", "Yes, and don't ask again for npm run deploy", "No"]), ctx: 41, model: "claude-opus-5-5", effort: "high", mode: "default" },
   { ...base, id: "w1:p2", kind: "claude", ws: "w1", tab: "w1:t2", project: "garden-planner", cwd: "/home/alex/src/garden-planner", title: "Datenmodell für Beete", status: "blocked", sessionId: "s2", since: now - 6 * min, lastActive: now - 2 * min,
-    dialog: { hash: "q1", kind: "question", title: "Datenbank", question: "Welche Datenbank soll die App nutzen?", detail: "", options: ["SQLite", "PostgreSQL", "Type something.", "Chat about this"], descs: ["Eine Datei, kein Server nötig. Reicht für eine Person.", "Eigener Dienst, besser für viele gleichzeitige Nutzer.", "", ""], freeText: 3 },
+    dialog: { hash: "q1", kind: "question", title: "Datenbank", tabs: [{ label: "Beete", done: true }, { label: "Datenbank", done: false }, { label: "Fotos", done: false }], step: 1, question: "Beete, Pflanzen und Gießtermine sollen gespeichert werden, später vielleicht auch für mehrere Leute im Haushalt. Welche Datenbank soll die App nutzen?", detail: "", options: ["SQLite", "PostgreSQL", "Type something.", "Chat about this"], descs: ["Eine Datei, kein Server nötig. Reicht für eine Person.", "Eigener Dienst, besser für viele gleichzeitige Nutzer.", "", ""], freeText: 3 },
     ctx: 22, model: "claude-opus-5-5", effort: "medium", mode: "plan" },
   { ...base, id: "w1:p3", kind: "claude", ws: "w1", tab: "w1:t3", project: "blog", cwd: "/home/alex/src/blog", title: "Bildgrößen im Build optimieren", status: "working", sessionId: "s3", since: now - 4 * min, lastActive: now, pinned: true,
-    dialog: null, ctx: 63, model: "claude-sonnet-5-5", effort: "medium", mode: "acceptEdits", plan: [["Bilder im Build finden", "done"], ["Größen messen", "done"], ["Umwandlung nach WebP", "run"], ["Vorher und nachher vergleichen", "todo"]], subs: 1 },
+    dialog: null, ctx: 63, model: "claude-sonnet-5-5", effort: "medium", mode: "acceptEdits", plan: [["Bilder im Build finden", "done"], ["Größen messen", "done"], ["Umwandlung nach WebP", "run"], ["Vorher und nachher vergleichen", "todo"]], subs: 1,
+    usage: { in: 1840, out: 61200, cr: 9412000, cw: 388000, cost: 3.19, msgs: 74, subMsgs: 12, models: [{ model: "claude-sonnet-5-5", in: 1800, out: 58900, cr: 9300000, cw: 371000, cost: 3.18 }, { model: "claude-haiku-5-5", in: 40, out: 2300, cr: 112000, cw: 17000, cost: 0.004 }] } },
   { ...base, id: "w2:p1", kind: "claude", ws: "w2", tab: "w2:t1", project: "homelab", cwd: "/home/alex/src/homelab", title: "Backup-Skript prüfen", status: "done", sessionId: "s4", since: now - 20 * min, lastActive: now - 12 * min,
     dialog: null, ctx: 35, model: "claude-opus-5-5", effort: "high", mode: "auto" },
   { ...base, id: "w2:p2", kind: "codex", ws: "w2", tab: "w2:t2", project: "dotfiles", cwd: "/home/alex/src/dotfiles", title: "Shell-Aliase aufräumen", status: "idle", sessionId: null, since: now - 2 * H, lastActive: now - 2 * H,
@@ -87,7 +88,7 @@ async function page(b, opts) {
       if (u.pathname === "/api/projects") return J({ root: "/home/alex/src", projects: ["blog", "dotfiles", "garden-planner", "homelab", "recipes", "webshop"] });
       if (u.pathname.endsWith("/commands")) return J({ commands: COMMANDS });
       const m = u.pathname.match(/^\/api\/agents\/([^/]+)\/feed$/);
-      if (m) { const id = decodeURIComponent(m[1]); const a = agents.find(x => x.id === id); return J({ feed: FEEDS[id] || [], screen: null, dialog: a && a.dialog, tip: null, auth: null, panel: PANELS[id] || null }); }
+      if (m) { const id = decodeURIComponent(m[1]); const a = agents.find(x => x.id === id); return J({ feed: FEEDS[id] || [], screen: null, dialog: a && a.dialog, tip: null, auth: null, panel: PANELS[id] || null, spinner: id === "w1:p3" ? { secs: 287, tokens: "4.1k", note: "thinking" } : null }); }
       if (u.pathname.endsWith("/changes")) return J({ changes: FEEDS["w1:p3"].filter(x => x.t === "diff") });
       return J({ ok: true });
     }
@@ -182,5 +183,12 @@ async function shootPhone(p, b, name, scheme) {
     await p.screenshot({ path: path.join(OUT, "desktop-" + scheme + ".png") });
     await p.context().close();
   }
+  // Verbrauch einer Sitzung: Tipp auf den Kosten-Chip
+  p = await fresh();
+  await p.click('.card[data-agent="w1:p3"]'); await p.waitForTimeout(600);
+  await p.click("[data-usage]"); await p.waitForTimeout(300);
+  await shootPhone(p, b, "mobile-usage", "dark");
+  await p.context().close();
+
   await b.close();
 })().catch(e => { console.error(e); process.exit(1); });

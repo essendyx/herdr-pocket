@@ -121,3 +121,34 @@ test("Vollbild-Anzeige ohne Fußzeile (z. B. /usage): erkannt, weil das Eingabef
   expect(parsePanel(await read("screen-tip.txt"), true)).toBeNull();
   expect(parsePanel(await read("screen-tip-explained.txt"), true)).toBeNull();
 });
+
+test("Statuszeile beim Arbeiten: Dauer, Tokens und Hinweis aus dem Terminal", async () => {
+  const { parseSpinner } = await import("../server/prompt.ts");
+  const box = "\n────────────────────\n❯\n────────────────────\n  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt";
+  expect(parseSpinner("● Hallo\n* Vibing… (10m 47s · ↓ 11.2k tokens · thinking)" + box)).toEqual({ secs: 647, tokens: "11.2k", note: "thinking" });
+  expect(parseSpinner("· Incubating… (18s · ↓ 1.4k tokens)" + box)).toEqual({ secs: 18, tokens: "1.4k", note: "" });
+  expect(parseSpinner("✻ Pondering… (1h 2m 3s · ↑ 900 tokens · esc to interrupt)" + box)).toEqual({ secs: 3723, tokens: "900", note: "" });
+  expect(parseSpinner("✳ Pondering…" + box)).toEqual({ secs: null, tokens: "", note: "" });
+  // Abgeschlossene Runde und normale Antwort sind keine Statuszeile
+  expect(parseSpinner("✻ Churned for 11s · done 11:40 PM" + box)).toBeNull();
+  expect(parseSpinner("● Ich prüfe das…" + box)).toBeNull();
+});
+
+test("Mehrere Teilfragen: Reiter werden erkannt, umgebrochene Frage bleibt vollständig", async () => {
+  const d = parseDialog(await read("screen-question-multi.txt"))!;
+  expect(d.kind).toBe("question");
+  expect(d.question).toBe("In Miniconda gibt es zwei Conda-Umgebungen: 'tts' und 'vision'. Wenn Miniconda wegfällt, sind die auch weg. Brauchst du die noch?");
+  expect(d.title).toBe("Conda-Envs");
+  expect(d.tabs).toEqual([{ label: "Codex", done: true }, { label: "Conda-Envs", done: false }, { label: "ComfyUI", done: false }]);
+  expect(d.step).toBe(1);
+  expect(d.options.slice(0, 2)).toEqual(["Können weg", "Als venv nachbauen"]);
+  expect(d.descs[1]).toBe("Ich baue beide als uv-venv auf Python 3.14 neu auf (Torch/CUDA kann dabei hakelig werden), danach fliegt Miniconda raus.");
+  expect(d.freeText).toBe(3);
+});
+
+test("Einzelne Frage: Reiter oben ist der Titel, keine Reiterliste", async () => {
+  const d = parseDialog(await read("screen-question.txt"))!;
+  expect(d.title).toBe("Test");
+  expect(d.question).toBe("Testfrage 2: Welche Farbe soll der Senden-Knopf haben?");
+  expect(d.tabs).toBeUndefined();
+});

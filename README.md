@@ -7,12 +7,12 @@
 <p align="center">
   <img src="docs/screenshots/mobile-agents.png" width="32%" alt="Agent list with a waiting approval, pinned agent and subscription usage">
   <img src="docs/screenshots/mobile-chat.png" width="32%" alt="Chat with an attached image, plan progress and a Markdown table">
-  <img src="docs/screenshots/mobile-question.png" width="32%" alt="Multiple-choice question from Claude">
+  <img src="docs/screenshots/mobile-question.png" width="32%" alt="Multi-part question from Claude with progress tabs">
 </p>
 <p align="center">
   <img src="docs/screenshots/mobile-slash.png" width="32%" alt="Slash command autocomplete">
   <img src="docs/screenshots/mobile-menu.png" width="32%" alt="Terminal menu such as /usage shown in the chat with arrow keys">
-  <img src="docs/screenshots/mobile-projects.png" width="32%" alt="Agents grouped by project, most recent first">
+  <img src="docs/screenshots/mobile-usage.png" width="32%" alt="Token usage of a session and what it would cost at API prices">
 </p>
 
 ![Desktop layout, dark](docs/screenshots/desktop-dark.png)
@@ -38,7 +38,7 @@ herdr-pocket is a small [Bun](https://bun.sh) server that talks to the herdr soc
 
 **Approvals, questions and everything else that pops up in the terminal**
 - Allow or deny Claude Code permission prompts straight from the list
-- Multiple-choice questions (`AskUserQuestion`) as buttons, free-text answers, multi-part questions with the review/submit page
+- Multiple-choice questions (`AskUserQuestion`) as buttons, free-text answers, multi-part questions with progress ("question 2 of 3") and the review/submit page; long questions are shown in full even when the terminal wraps them
 - "Trust this folder?" on the first start in a new folder, as a card with yes and no
 - MCP sign-in (`/mcp`): a clean, tappable sign-in link instead of a wrapped terminal URL, and a field to paste the redirect address back
 - Any other menu or full-screen view in the terminal (`/mcp`, `/model`, `/usage`, `/status`, `/config`, ...) shows up in the chat as a card you control with arrow keys, Enter, Tab and Esc
@@ -47,6 +47,9 @@ herdr-pocket is a small [Bun](https://bun.sh) server that talks to the herdr soc
 
 **Chat**
 - Transcript view with tool calls, diffs, plan progress and subagents
+- While an agent works: a live clock since the turn started, tokens so far and what Claude is doing, read from the terminal status line
+- Messages you send while Claude is busy show up right away as "waiting" and move into the chat once Claude picks them up
+- Token usage per session (input, cache, output, subagents) and what it would cost at API list prices
 - Auto-compaction shows up as a slim divider, the summary is collapsible
 - Markdown tables, code blocks with copy buttons, one-tap "send" for `! command` lines, tap inline code to copy
 - Slash command autocomplete: built-in commands, your own commands and skills, project commands and all enabled plugins

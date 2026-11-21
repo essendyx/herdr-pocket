@@ -1,0 +1,18 @@
+● Ich habe noch drei Rückfragen.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+←  ☒ Codex  ☐ Conda-Envs  ☐ ComfyUI  ✔ Submit  →
+
+In Miniconda gibt es zwei Conda-Umgebungen: 'tts' und 'vision'. Wenn Miniconda wegfällt, sind die auch
+weg. Brauchst du die noch?
+
+❯ 1. Können weg
+     Miniconda komplett deinstallieren (ca. 25 GB frei).
+  2. Als venv nachbauen
+     Ich baue beide als uv-venv auf Python 3.14 neu auf (Torch/CUDA kann dabei hakelig werden), danach fliegt
+     Miniconda raus.
+  3. Type something.
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  4. Chat about this
+
+Enter to select · Tab/Arrow keys to navigate · Esc to cancel

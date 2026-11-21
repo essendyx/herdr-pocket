@@ -12,7 +12,7 @@ const STATE = {
   shells: [{ id: "w1:p5", ws: "w1", cwd: "/home/alex/src/ideen", title: "" }],
   agents: [
     { id: "w1:p1", ws: "w1", tab: "w1:t1", project: "smarthome", cwd: "/home/alex/src/smarthome", title: "Firmware-Update", status: "blocked", sessionId: "s1", since: Date.now(), lastActive: Date.now(), dialog: DIALOG, ctx: 38, model: "claude-opus-5-5", effort: "high", mode: "default", plan: [], subs: 0, queue: [], hasHistory: true },
-    { id: "w1:p2", ws: "w1", tab: "w1:t2", project: "idlegame", cwd: "/home/alex/src/idlegame", title: "Prio 1", status: "working", sessionId: "s2", since: Date.now(), lastActive: Date.now(), dialog: null, ctx: 71, model: "claude-sonnet-5-5", effort: "medium", mode: "auto", plan: [["A", "done"], ["B", "run"]], subs: 1, queue: [], hasHistory: true },
+    { id: "w1:p2", ws: "w1", tab: "w1:t2", project: "idlegame", cwd: "/home/alex/src/idlegame", title: "Prio 1", status: "working", sessionId: "s2", since: Date.now(), lastActive: Date.now(), dialog: null, ctx: 71, model: "claude-sonnet-5-5", effort: "medium", mode: "auto", plan: [["A", "done"], ["B", "run"]], subs: 1, usage: { in: 2260, out: 818419, cr: 239602848, cw: 2098465, cost: 80.2276, msgs: 982, subMsgs: 30, models: [{ model: "claude-opus-5-5", in: 2250, out: 815461, cr: 239474363, cw: 2060333, cost: 80.22 }, { model: "claude-haiku-5-5", in: 10, out: 2958, cr: 128485, cw: 38132, cost: 0.0075 }] }, queue: [], hasHistory: true },
   ],
 };
 let srv: any;
@@ -38,6 +38,7 @@ beforeAll(() => {
       if (u.pathname.endsWith("/commands") && manyCmds) return J({ commands: Array.from({ length: 20 }, (_, i) => ({ name: "cmd" + i, desc: "" })) });
       if (u.pathname.endsWith("/commands")) return J({ commands: [{ name: "clear", desc: "Leeren" }, { name: "compact", desc: "Zusammenfassen" }, { name: "commit-commands:commit", desc: "Commit" }, { name: "mcp", desc: "MCP" }] });
       if (u.pathname.endsWith("/feed") && withHist) return J({ feed: [{ t: "user", v: "erste" }, { t: "text", v: "Antwort" }, { t: "user", v: "zweite\nmit Zeile" }, { t: "user", v: "dritte" }], screen: null, dialog: null, tip: null, auth: null, panel: null });
+      if (u.pathname.endsWith("/feed") && withSpinner) return J({ feed: [{ t: "user", v: "a" }, { t: "tool", k: "Bash", a: "x", s: "ok" }, { t: "tool", k: "Bash", a: "y", s: "ok" }, { t: "user", v: "b" }, { t: "tool", k: "Bash", a: "z", s: "ok" }, { t: "tool", k: "Read", a: "q", s: "ok" }], screen: null, dialog: null, tip: null, auth: null, panel: null, spinner: { secs: 647, tokens: "11.2k", note: "thinking" }, pending: ["Und das <hier> bitte auch"] });
       if (u.pathname.endsWith("/feed") && withPanel) return J({ feed: [{ t: "user", v: "Hallo" }], screen: null, dialog: null, tip: null, auth: null, panel: { text: "Manage MCP servers\n❯ 1. higgsfield", footer: "↑↓ to navigate · Enter to confirm · Esc to cancel" } });
       if (u.pathname.endsWith("/feed") && withAuth) return J({ feed: [{ t: "user", v: "Hallo" }], screen: null, dialog: null, tip: null, auth: { server: "higgsfield", url: "https://example.ai/oauth?a=1&redirect_uri=http%3A%2F%2Flocalhost%3A5%2Fcallback", paste: true } });
       if (u.pathname.endsWith("/feed") && withTip) return J({ feed: [{ t: "user", v: "Hallo" }], screen: null, dialog: null, tip: tipNow });
@@ -65,6 +66,7 @@ let authRedirect = false;
 let withTip = false;
 let withAuth = false;
 let withPanel = false;
+let withSpinner = false;
 let withHist = false;
 let manyCmds = false;
 let blockSend = false;
@@ -797,4 +799,67 @@ test("Senden, während im Terminal etwas blockt: Hinweis erscheint lange genug, 
     expect(ta.value).toBe("Wichtige Nachricht");
     await w.happyDOM.abort(); w.close();
   } finally { blockSend = false; }
+});
+
+test("Arbeitender Agent: Dauer läuft sichtbar mit, Tokens stehen dabei, letzte Gruppe heißt 'Arbeitet gerade'", async () => {
+  withSpinner = true;
+  try {
+    const w = await boot();
+    const d = w.document;
+    (d.querySelector('[data-agent="w1:p2"]') as any).click();
+    await new Promise(r => setTimeout(r, 100));
+    const t = d.querySelector(".feed .thinking") as any;
+    expect(t.textContent).toContain("10 Min 47 s");
+    expect(t.textContent).toContain("11,2k Tokens");
+    expect(t.textContent).toContain("denkt nach");
+    const sums = [...d.querySelectorAll(".feed details.work summary b")].map((x: any) => x.textContent);
+    expect(sums).toEqual(["Hat gearbeitet", "Arbeitet gerade"]);
+    // Eingereihte Nachricht: sichtbar, als wartend markiert, nach der Statuszeile
+    const pend = d.querySelector(".feed .msg-user.pending") as any;
+    expect(pend.textContent).toContain("Und das <hier> bitte auch");
+    expect(pend.textContent).toContain("wartet");
+    expect(d.querySelector(".feed").innerHTML.indexOf("pending")).toBeGreaterThan(d.querySelector(".feed").innerHTML.indexOf("thinking"));
+    await new Promise(r => setTimeout(r, 2100));
+    expect((d.querySelector(".feed .thinking") as any).textContent).not.toContain("10 Min 47 s");
+    await w.happyDOM.abort(); w.close();
+  } finally { withSpinner = false; }
+});
+
+test("Verbrauch: Kosten-Chip im Agent, Tipp zeigt Input, Output und Kosten je Modell", async () => {
+  const w = await boot();
+  const d = w.document;
+  (d.querySelector('[data-agent="w1:p2"]') as any).click();
+  await new Promise(r => setTimeout(r, 100));
+  const chip = d.querySelector("[data-usage]") as any;
+  expect(chip.textContent).toContain("80,23 $");
+  chip.click();
+  const sh = d.querySelector("#sheetHost .sheet") as any;
+  const t = sh.textContent;
+  expect(t).toContain("80,23 $");
+  expect(t).toContain("241,7 Mio");   // Input gesamt
+  expect(t).toContain("239,6 Mio");   // davon aus dem Cache
+  expect(t).toContain("818k");        // Output
+  expect(t).toContain("Opus 5.5");
+  expect(t).toContain("Haiku 5.5");
+  expect(t).toContain("30");          // Subagent-Antworten
+  await w.happyDOM.abort(); w.close();
+});
+
+test("Frage mit Teilfragen: Fortschritt und Reiter statt roher Reiterzeile, Frage vollständig", async () => {
+  const a = STATE.agents[0] as any, old = a.dialog;
+  a.dialog = { hash: "multi000000000000", kind: "question", title: "Conda-Envs", question: "In Miniconda gibt es zwei Umgebungen. Brauchst du die noch?", detail: "", options: ["Können weg", "Als venv nachbauen", "Type something.", "Chat about this"], descs: ["Miniconda weg.", "Neu bauen.", "", ""], freeText: 3,
+    tabs: [{ label: "Codex", done: true }, { label: "Conda-Envs", done: false }, { label: "ComfyUI", done: false }], step: 1 };
+  try {
+    const w = await boot();
+    const d = w.document;
+    (d.querySelector('[data-agent="w1:p1"]') as any).click();
+    await new Promise(r => setTimeout(r, 100));
+    const card = d.querySelector(".feed .perm.ask-q") as any;
+    expect(card.querySelector(".q").textContent).toContain("In Miniconda gibt es zwei Umgebungen. Brauchst du die noch?");
+    expect(card.querySelector(".qstep").textContent).toContain("Frage 2 von 3");
+    const tabs = [...card.querySelectorAll(".qtabs span")].map((x: any) => x.className + ":" + x.textContent);
+    expect(tabs).toEqual(["done:✓ Codex", "cur:Conda-Envs", ":ComfyUI"]);
+    expect(card.textContent).not.toContain("Submit");
+    await w.happyDOM.abort(); w.close();
+  } finally { a.dialog = old; }
 });
