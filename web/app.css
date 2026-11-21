@@ -529,3 +529,5 @@ input, textarea, select { font-size: 16px !important; }
 .slash button small { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .slash button.on { background: var(--surface-2); }
 .panelcard pre { max-height: 55vh; overflow-y: auto; }
+.inrow { position: relative; }
+.slash button b { overflow-wrap: anywhere; }

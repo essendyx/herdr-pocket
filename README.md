@@ -5,10 +5,14 @@
 > Unofficial companion app. Not affiliated with or endorsed by the herdr project. The UI is currently in **German**.
 
 <p align="center">
-  <img src="docs/screenshots/mobile-agents.png" width="24%" alt="Agent list with waiting approvals">
-  <img src="docs/screenshots/mobile-chat.png" width="24%" alt="Chat with plan, table, code block and diff">
-  <img src="docs/screenshots/mobile-question.png" width="24%" alt="Multiple-choice question from Claude">
-  <img src="docs/screenshots/mobile-projects.png" width="24%" alt="Agents grouped by project">
+  <img src="docs/screenshots/mobile-agents.png" width="32%" alt="Agent list with a waiting approval, pinned agent and subscription usage">
+  <img src="docs/screenshots/mobile-chat.png" width="32%" alt="Chat with an attached image, plan progress and a Markdown table">
+  <img src="docs/screenshots/mobile-question.png" width="32%" alt="Multiple-choice question from Claude">
+</p>
+<p align="center">
+  <img src="docs/screenshots/mobile-slash.png" width="32%" alt="Slash command autocomplete">
+  <img src="docs/screenshots/mobile-menu.png" width="32%" alt="Terminal menu such as /usage shown in the chat with arrow keys">
+  <img src="docs/screenshots/mobile-projects.png" width="32%" alt="Agents grouped by project, most recent first">
 </p>
 
 ![Desktop layout, dark](docs/screenshots/desktop-dark.png)
@@ -26,20 +30,29 @@ herdr-pocket is a small [Bun](https://bun.sh) server that talks to the herdr soc
 
 **Agents**
 - All agents across all herdr spaces, by status (waiting, working, done, ready) or grouped by project
-- Pin agents to the top (stored on the server, so pins follow you across devices)
+- Sorted by the last real message, so the night's automatic restart does not reshuffle the list; new agents show up on top
+- "Done" turns into "ready" once you open the chat, and this is stored on the server, so it counts on every device
+- Pin agents to the top (also stored on the server)
 - Start new agents: Claude Code, Codex or a local model via opencode, in an existing or new project and space
 - Change mode, model and effort per Claude session; end agents, close shells and spaces with undo
 
-**Approvals and questions**
+**Approvals, questions and everything else that pops up in the terminal**
 - Allow or deny Claude Code permission prompts straight from the list
 - Multiple-choice questions (`AskUserQuestion`) as buttons, free-text answers, multi-part questions with the review/submit page
-- Tips from the built-in "You should know" plugin, including "discuss in chat"
+- "Trust this folder?" on the first start in a new folder, as a card with yes and no
+- MCP sign-in (`/mcp`): a clean, tappable sign-in link instead of a wrapped terminal URL, and a field to paste the redirect address back
+- Any other menu or full-screen view in the terminal (`/mcp`, `/model`, `/usage`, `/status`, `/config`, ...) shows up in the chat as a card you control with arrow keys, Enter, Tab and Esc
+- If something in the terminal blocks input, sending is refused with a clear hint instead of typing into the menu; your text stays in the field
+- Tips from the built-in "You should know" plugin with an expandable explanation and "discuss in chat", which only pre-fills your message
 
 **Chat**
 - Transcript view with tool calls, diffs, plan progress and subagents
+- Auto-compaction shows up as a slim divider, the summary is collapsible
 - Markdown tables, code blocks with copy buttons, one-tap "send" for `! command` lines, tap inline code to copy
+- Slash command autocomplete: built-in commands, your own commands and skills, project commands and all enabled plugins
+- Enter sends, Shift+Enter adds a line, arrow up/down in an empty field brings back your earlier messages
+- Paste, drop or pick images (`Ctrl+V`), shown as `[Bild 1]`, deleted with a single backspace and viewable full-size later
 - Links open in the real Safari when used as an iOS home-screen app
-- Paste or drop images (`Ctrl+V`), shown as `[Bild 1]` and viewable full-size later
 - Prompt queue while an agent is busy, quick keys (Enter, Esc, `/compact`, ...), a live terminal view
 
 **Everything else**
@@ -120,6 +133,12 @@ HERDR_APP_DEV=1 HOST=127.0.0.1 PORT=7699 bun server/main.ts
 ```
 
 No build step: `web/` is served as is. Server code is in `server/`, the UI in `web/app.js` and `web/app.css`.
+
+The screenshots in this README are generated with made-up data, no server or herdr needed:
+
+```sh
+PLAYWRIGHT_CORE=/path/to/node_modules/playwright-core node scripts/screenshots.cjs
+```
 
 ## License
 

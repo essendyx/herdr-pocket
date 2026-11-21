@@ -1089,7 +1089,8 @@
     drawSlash();
   }
   function drawSlash() {
-    const wrap = $(".msgwrap"); if (!wrap || !slash) return;
+    // Über die ganze Eingabezeile, nicht nur so breit wie das Textfeld (am Handy sitzen Foto- und Mikrofon-Knopf daneben)
+    const ta0 = $("#msg"), wrap = ta0 && (ta0.closest(".inrow") || ta0.closest(".msgwrap")); if (!wrap || !slash) return;
     let el = $(".slash");
     if (!el) { el = document.createElement("div"); el.className = "slash"; el.setAttribute("role", "listbox"); el.addEventListener("mousedown", e => e.preventDefault()); wrap.appendChild(el); }
     el.innerHTML = slash.items.map((c, k) => '<button type="button" role="option" class="' + (k === slash.i ? "on" : "") + '" data-slash="' + esc(c.name) + '"><b>/' + esc(c.name) + '</b>' + (c.desc ? '<small>' + esc(c.desc) + '</small>' : "") + '</button>').join("");
