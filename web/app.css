@@ -508,3 +508,24 @@ input, textarea, select { font-size: 16px !important; }
 /* Pfeil der Planleiste: klein, dreht beim Aufklappen */
 .planbar > button > svg { width: 16px; height: 16px; flex: none; color: var(--muted); transition: transform 0.15s; }
 .planbar > button[aria-expanded="true"] > svg { transform: rotate(180deg); }
+
+/* Komprimierung: schmale Trennzeile, Zusammenfassung aufklappbar */
+.feed details.compact { border-block: 1px dashed var(--line); padding-block: 6px; }
+.feed details.compact > summary { list-style: none; cursor: pointer; display: flex; justify-content: center; align-items: baseline; gap: 8px; font-size: 13px; color: var(--muted); }
+.feed details.compact > summary::-webkit-details-marker { display: none; }
+.feed details.compact > summary small { color: var(--accent); }
+.feed details.compact > summary small::after { content: " ▸"; }
+.feed details.compact[open] > summary small::after { content: " ▾"; }
+.feed details.compact > .msg-text { margin-top: 10px; font-size: 13.5px; color: var(--muted); max-height: 60vh; overflow-y: auto; }
+.authcard .opts a.btn { text-align: center; justify-content: center; text-decoration: none; }
+.authcard .authsteps { margin: 10px 0 4px; padding-left: 20px; font-size: 13.5px; color: var(--muted); display: grid; gap: 4px; }
+.panelcard pre { margin: 8px 0; padding: 10px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font-family: var(--font-mono); font-size: 12.5px; line-height: 1.45; white-space: pre; overflow-x: auto; }
+.panelcard .btnrow { flex-wrap: wrap; }
+.panelcard .btnrow .btn { min-width: 52px; }
+/* Vorschläge für Slash-Befehle über dem Eingabefeld */
+.slash { position: absolute; left: 0; right: 0; bottom: calc(100% + 6px); z-index: 30; max-height: min(320px, 45vh); overflow-y: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,.25); padding: 4px; }
+.slash button { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; width: 100%; text-align: left; padding: 7px 10px; border-radius: 8px; background: none; border: 0; color: inherit; }
+.slash button b { font-family: var(--font-mono); font-size: 13.5px; font-weight: 600; }
+.slash button small { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.slash button.on { background: var(--surface-2); }
+.panelcard pre { max-height: 55vh; overflow-y: auto; }

@@ -1,0 +1,16 @@
+❯ läuft der higgsfield mcp?
+
+● Der Higgsfield-MCP ist eingetragen.
+
+✻ Baked for 9s · done 1:26 PM
+
+╭───────────────────────────────────────────────────────────────╮
+│ Manage MCP servers                                            │
+│ 2 servers                                                     │
+│                                                               │
+│ ❯ 1. higgsfield                 △ needs authentication        │
+│   2. obsidian                   ✔ connected                   │
+│                                                               │
+│ ※ Tip: Run claude --debug to see logs                         │
+╰───────────────────────────────────────────────────────────────╯
+   ↑↓ to navigate · Enter to confirm · Esc to cancel

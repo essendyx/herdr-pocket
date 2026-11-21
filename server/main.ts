@@ -16,6 +16,9 @@ import { accessVerifier, checkCsrf } from "./auth.ts";
 import { loadConfig, ConfigError } from "./config.ts";
 import { imagePath } from "./images.ts";
 import { pinKey, setPin, isPinned } from "./pins.ts";
+import { markSeen, isSeen } from "./seen.ts";
+import { parseAuth, parsePanel } from "./prompt.ts";
+import { listCommands, type Cmd } from "./commands.ts";
 import { STATE_DIR, ensureDir, readJson, writeJson, DEFAULT_SETTINGS, type Settings } from "./store.ts";
 import { call } from "./herdr.ts";
 import { PushHub, setupVapid, shouldNotify, pushPayload } from "./push.ts";
@@ -38,10 +41,13 @@ process.on("unhandledRejection", e => console.error("Unbehandelt:", e));
 process.on("uncaughtException", e => console.error("Ausnahme:", e));
 const poller = new Poller();
 const actions = new Actions(undefined as any, () => poller.snapshot);
+// Startauftrag, den ein blockierendes Terminal (z. B. Ordner-Vertrauen) aufhält: geht raus, sobald der Agent frei ist
+actions.onPending = (pane, text) => { queue.push(pane, text); scheduleState(); };
 const queue = new PromptQueue(join(STATE_DIR, "queue.json"));
 const activity = new Activity();
 let settings: Settings = readJson("settings.json", DEFAULT_SETTINGS);
 let pins: string[] = readJson("pins.json", []);
+let seen: Record<string, number> = readJson("seen.json", {});
 export const hooks = { onStatus: [] as ((a: Agent, from: Status, to: Status, s: Settings) => void)[] };
 
 let verify: ((r: Request) => Promise<{ email: string } | null>) | null = null;
@@ -68,13 +74,17 @@ const TIP_FILE = tipStoreFile();
 let tipMtime = -1, usageMtime = 0;
 function tipMtimeNow() { try { return TIP_FILE ? statSync(TIP_FILE).mtimeMs : 0; } catch { return 0; } }
 
+const readVisible = async (id: string): Promise<string> => (await call("pane.read", { pane_id: id, source: "visible" }).catch(() => null))?.read?.text ?? "";
+
+const cmdCache = new Map<string, { at: number; list: Cmd[] }>();
 async function stateJson() {
   const s = poller.snapshot;
   const agents = await Promise.all(s.agents.map(async a => {
     const i = await session(a);
     const dialog = a.status === "blocked" ? await actions.dialog(a.id).catch(() => null) : null;
     const tip = tipInfo(TIP_FILE, a.sessionId);
-    return { ...a, pinned: isPinned(pins, a), dialog, tip, lastActive: mtimeOf(a) || null, ctx: i?.ctx ?? 0, model: i?.model ?? null, effort: i?.effort ?? null, mode: i?.mode ?? null, plan: i?.plan ?? [], subs: i?.subs ?? 0, queue: queue.list(a.id), hasHistory: !!i };
+    const lastActive = i?.last || mtimeOf(a) || null;
+    return { ...a, pinned: isPinned(pins, a), seen: isSeen(seen, { ...a, lastActive }), dialog, tip, lastActive, ctx: i?.ctx ?? 0, model: i?.model ?? null, effort: i?.effort ?? null, mode: i?.mode ?? null, plan: i?.plan ?? [], subs: i?.subs ?? 0, queue: queue.list(a.id), hasHistory: !!i };
   }));
   return { ...s, agents, usage: usageView(readJson("usage.json", null)) };
 }
@@ -169,9 +179,28 @@ async function route(req: Request, url: URL): Promise<Response> {
     const dialog = a.status === "blocked" ? await actions.dialog(a.id).catch(() => null) : null;
     // Tipp-Optionen stehen nur auf dem Bildschirm (ändern sich z. B. nach "Learn more")
     const tipInfoNow = tipInfo(TIP_FILE, a.sessionId);
-    const tipScreen = tipInfoNow ? parseTip((await call("pane.read", { pane_id: a.id, source: "visible" }).catch(() => null))?.read?.text ?? "") : null;
+    const visible = await readVisible(a.id);
+    const tipScreen = tipInfoNow ? parseTip(visible) : null;
+    // MCP-Anmeldung im Terminal: als Karte mit sauberem Link und Feld für die Adresse aus dem Browser
+    const auth = a.status === "working" || a.status === "blocked" ? parseAuth(visible) : null;
     // Maßgeblich ist das Terminal: steht dort kein Tipp mehr (z. B. nach "Dismiss"), gibt es keine Karte, auch wenn die Plugin-Datei noch hinterherhinkt
-    return json({ feed: i?.feed.slice(-300) ?? [], screen, dialog, tip: tipInfoNow && tipScreen ? { ...tipInfoNow, options: tipScreen.options } : null });
+    return json({ feed: i?.feed.slice(-300) ?? [], screen, dialog, tip: tipInfoNow && tipScreen ? { ...tipInfoNow, options: tipScreen.options } : null, auth,
+      // Sonstiges offenes Menü im Terminal (z. B. /mcp): im Chat zeigen, sonst sieht man es nur im Terminal
+      panel: !auth && !tipScreen && !dialog ? parsePanel(visible, a.kind === "claude") : null });
+  }
+  // Slash-Befehle für die Autovervollständigung, je Projektordner eine Minute zwischengespeichert
+  if (req.method === "GET" && (r = m(/^\/api\/agents\/([^/]+)\/commands$/))) {
+    const a = agentOf(r[1]); if (!a) return fail(404, "Agent nicht gefunden");
+    const c = cmdCache.get(a.cwd);
+    if (c && Date.now() - c.at < 60_000) return json({ commands: c.list });
+    const list = listCommands(homedir(), a.cwd);
+    cmdCache.set(a.cwd, { at: Date.now(), list });
+    return json({ commands: list });
+  }
+  if (req.method === "POST" && (r = m(/^\/api\/agents\/([^/]+)\/auth$/))) {
+    await actions.authPaste(r[1], String((await body()).text || ""));
+    setTimeout(() => broadcast({ type: "feed", pane: r![1] }), 1500);
+    return json({ ok: true });
   }
   if (req.method === "POST" && (r = m(/^\/api\/agents\/([^/]+)\/tip$/))) {
     const b = await body();
@@ -285,6 +314,18 @@ async function route(req: Request, url: URL): Promise<Response> {
     pins = setPin(pins, pinKey(a), !!b.pinned);
     writeJson("pins.json", pins); scheduleState();
     return json({ pinned: !!b.pinned });
+  }
+  // Fertige Agents als gesehen markieren (Chat geöffnet oder "Als gesehen markieren"), gilt für alle Geräte
+  if (req.method === "POST" && p === "/api/seen") {
+    const b = await body();
+    const ids = Array.isArray(b.ids) ? b.ids.map(String) : [];
+    let n = 0;
+    for (const a of poller.snapshot.agents) {
+      if (!ids.includes(a.id) || a.status !== "done") continue;
+      seen = markSeen(seen, { ...a, lastActive: (await session(a))?.last || mtimeOf(a) || null }); n++;
+    }
+    if (n) { writeJson("seen.json", seen); scheduleState(); }
+    return json({ marked: n });
   }
   if (req.method === "PUT" && p === "/api/settings") {
     const b = await body();

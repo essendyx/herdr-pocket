@@ -3,7 +3,8 @@ import { createHash } from "crypto";
 
 // kind: "permission" = Freigabe (Bash, Write ...), "question" = Auswahlfrage von Claude (AskUserQuestion)
 // descs: Beschreibung je Option (nur bei Fragen), freeText: Nummer der Option "Type something." oder null
-export type Dialog = { hash: string; kind: "permission" | "question"; title: string; question: string; detail: string; options: string[]; descs: string[]; freeText: number | null };
+// "trust" = Ordner-Vertrauen beim ersten Start in einem Ordner: Optionen ohne Nummern, Auswahl per Pfeiltasten ab cursor
+export type Dialog = { hash: string; kind: "permission" | "question" | "trust"; title: string; question: string; detail: string; options: string[]; descs: string[]; freeText: number | null; cursor?: number };
 
 const OPTION = /^\s*(?:❯\s*)?(\d+)\.\s+(.*\S)\s*$/;
 const RULE = /^\s*[─━]{10,}\s*$/;
@@ -14,8 +15,27 @@ const REVIEW = /^\s*Review your answers\s*$/;
 const TABS = /^\s*←.*Submit.*→\s*$/;
 const FREE = /^Type something\.?$/i;
 
+// Ordner-Vertrauen: "Accessing workspace:", Pfad, zwei Optionen ohne Nummern, "Enter to confirm"
+function parseTrust(lines: string[]): Dialog | null {
+  const head = lines.map(l => l.trim()).lastIndexOf("Accessing workspace:");
+  if (head < 0) return null;
+  const foot = lines.findIndex((l, k) => k > head && /Enter to confirm/.test(l));
+  if (foot < 0) return null;
+  const body = lines.slice(head + 1, foot).map(l => l.trim());
+  const yes = body.findIndex(l => /^(❯\s*)?Yes, I trust this folder$/.test(l));
+  if (yes < 1 || !/^(❯\s*)?No, exit$/.test(body[yes - 1])) return null;
+  const opts = [body[yes - 1], body[yes]];
+  const options = opts.map(o => o.replace(/^❯\s*/, ""));
+  const cursor = opts[1].startsWith("❯") ? 2 : 1;
+  const detail = body.find(l => l.startsWith("/")) || "";
+  const hash = createHash("sha256").update(["trust", detail, options.join("|")].join("\n")).digest("hex").slice(0, 16);
+  return { hash, kind: "trust", title: "", question: "Diesem Ordner vertrauen?", detail, options, descs: ["", ""], freeText: null, cursor };
+}
+
 export function parseDialog(screen: string): Dialog | null {
   const lines = screen.split("\n");
+  const trust = parseTrust(lines);
+  if (trust) return trust;
   // Letzte Option "1." suchen, von dort die Optionen einsammeln
   let first = -1;
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -90,4 +110,70 @@ export function parseDialog(screen: string): Dialog | null {
 export function denyOption(d: Dialog): number {
   const i = d.options.findIndex(o => /^No\b/i.test(o));
   return i >= 0 ? i + 1 : d.options.length;
+}
+
+// MCP-Anmeldung ("Authenticate with X"): die im Terminal umgebrochene URL wieder zusammensetzen.
+// paste: Claude wartet auf die Adresse aus dem Browser (Weiterleitung auf localhost geht vom Handy aus ins Leere)
+export type Auth = { server: string; url: string; paste: boolean };
+export function parseAuth(screen: string): Auth | null {
+  const lines = screen.split("\n");
+  let h = -1;
+  for (let i = lines.length - 1; i >= 0; i--) if (/^\s*Authenticate with \S/.test(lines[i])) { h = i; break; }
+  if (h < 0) return null;
+  const server = lines[h].trim().replace(/^Authenticate with\s+/, "");
+  const u = lines.findIndex((l, k) => k > h && /^\s*https?:\/\//.test(l));
+  if (u < 0) return null;
+  let url = "";
+  for (let k = u; k < lines.length && lines[k].trim(); k++) url += lines[k].trim();
+  const rest = lines.slice(u);
+  const paste = rest.some(l => /paste the URL/i.test(l)) && rest.some(l => /Enter to submit/.test(l));
+  return { server, url, paste };
+}
+
+// Offenes Menü im Terminal (z. B. /mcp, /model): erkennbar an der Fußzeile mit "Esc to …", "Enter to …" oder "to navigate".
+// Liefert den Block darüber ohne Rahmen, damit der Chat ihn zeigen und mit Pfeiltasten bedienen kann.
+export type Panel = { text: string; footer: string };
+const PANEL_FOOT = /\b(Esc to \w|Enter to \w|to navigate)/;
+const SEP = /^\s*[─━▔]{10,}\s*$/;
+// claude: bei Claude Code gilt außerdem jede Anzeige als Menü, die das normale Eingabefeld (❯ zwischen zwei Linien) verdrängt hat,
+// z. B. /usage oder /status ohne Fußzeile. Inhalt ist dann alles unter der obersten ▔-Linie.
+const TOPBAR = /^\s*▔{10,}\s*$/;
+function hasPromptBox(lines: string[]): boolean {
+  const tail = lines.slice(-12);
+  return tail.some((l, k) => /^\s*❯/.test(l) && k > 0 && RULE.test(tail[k - 1]));
+}
+export function parsePanel(screen: string, claude = false): Panel | null {
+  const lines = screen.split("\n").map(l => l.replace(/\s+$/, ""));
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  if (!lines.length) return null;
+  const footer = lines[lines.length - 1].trim();
+  if (!PANEL_FOOT.test(footer)) {
+    if (!claude || hasPromptBox(lines)) return null;
+    let top = -1;
+    for (let k = lines.length - 1; k >= 0; k--) if (TOPBAR.test(lines[k])) { top = k; break; }
+    const block = lines.slice(top + 1);
+    while (block.length && !block[0].trim()) block.shift();
+    if (!block.length) return null;
+    const ind = Math.min(...block.filter(l => l.trim()).map(l => l.match(/^\s*/)![0].length));
+    return { text: block.map(l => l.slice(ind)).join("\n"), footer: "" };
+  }
+  let i = lines.length - 2;
+  while (i >= 0 && !lines[i].trim()) i--;
+  if (i < 0) return null;
+  let block: string[] = [];
+  if (/^\s*╰/.test(lines[i])) {
+    let k = i - 1;
+    while (k >= 0 && !/^\s*╭/.test(lines[k])) k--;
+    if (k < 0) return null;
+    block = lines.slice(k + 1, i).map(l => l.replace(/^\s*│\s?/, "").replace(/\s*│\s*$/, ""));
+  } else {
+    let k = i;
+    while (k >= 0 && i - k < 30 && !SEP.test(lines[k])) k--;
+    block = lines.slice(k + 1, i + 1);
+  }
+  while (block.length && !block[0].trim()) block.shift();
+  while (block.length && !block[block.length - 1].trim()) block.pop();
+  if (!block.length) return null;
+  const ind = Math.min(...block.filter(l => l.trim()).map(l => l.match(/^\s*/)![0].length));
+  return { text: block.map(l => l.slice(ind).replace(/\s+$/, "")).join("\n"), footer };
 }

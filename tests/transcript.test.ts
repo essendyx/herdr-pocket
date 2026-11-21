@@ -74,3 +74,42 @@ test("readTail liest nur das Ende ab einer Zeilengrenze", async () => {
   expect(() => JSON.parse(first)).not.toThrow();
   expect(t.trim().endsWith('{"n":999}')).toBe(true);
 });
+
+test("Komprimierung: Zusammenfassung wird eigener Eintrag 'compact', nicht deine Nachricht", () => {
+  const lines = [
+    { type: "user", message: { role: "user", content: "Erste Frage" } },
+    { type: "system", subtype: "compact_boundary", content: "Conversation compacted", compactMetadata: { trigger: "auto" } },
+    { type: "user", isCompactSummary: true, isVisibleInTranscriptOnly: true, message: { role: "user", content: "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\n<system-reminder>\nintern\n</system-reminder>\nSummary:\n1. Ziel: App bauen\n\nIf you need specific details from before compaction (like exact code snippets), read the full transcript at: /x.jsonl\nContinue the conversation from where it left off." } },
+    { type: "user", message: { role: "user", content: "Weiter" } },
+  ].map(x => JSON.stringify(x)).join("\n");
+  const f = parseTranscript(lines).feed;
+  expect(f.map(x => x.t)).toEqual(["user", "compact", "user"]);
+  expect(f[1]).toEqual({ t: "compact", trigger: "auto", v: "Summary:\n1. Ziel: App bauen" } as any);
+});
+
+test("Eingebettetes Bild: [Image #N] wird durch den Pfad aus der Meta-Zeile ersetzt", () => {
+  const lines = [
+    { type: "user", imagePasteIds: [1, 2], message: { role: "user", content: [{ type: "text", text: "[Image #1] und [Image #2] schau mal" }, { type: "image", source: { type: "base64", data: "x" } }, { type: "image", source: { type: "base64", data: "y" } }] } },
+    { type: "user", isMeta: true, message: { role: "user", content: [{ type: "text", text: "[Image: source: /home/alex/bilder/a.jpg]" }, { type: "text", text: "[Image: source: /home/alex/bilder/b.png]" }] } },
+    { type: "user", message: { role: "user", content: "[Image #1] ohne Meta" } },
+  ].map(x => JSON.stringify(x)).join("\n");
+  const f = parseTranscript(lines).feed;
+  expect(f).toEqual([
+    { t: "user", v: "/home/alex/bilder/a.jpg und /home/alex/bilder/b.png schau mal" },
+    { t: "user", v: "[Image #1] ohne Meta" },
+  ] as any);
+});
+
+test("Letzte Aktivität: Zeit der letzten echten Nachricht, nicht der Zeilen beim Fortsetzen nach Neustart", () => {
+  const lines = [
+    { type: "user", timestamp: "2026-11-20T18:00:00.000Z", message: { role: "user", content: "Hallo" } },
+    { type: "assistant", timestamp: "2026-11-20T18:01:00.000Z", message: { role: "assistant", content: [{ type: "text", text: "Hi" }] } },
+    { type: "system", subtype: "turn_duration", timestamp: "2026-11-20T18:01:01.000Z" },
+    { type: "system", subtype: "informational", timestamp: "2026-11-21T03:00:52.000Z" },
+    { type: "user", isMeta: true, timestamp: "2026-11-21T03:00:53.000Z", message: { role: "user", content: "intern" } },
+    { type: "derived-from" },
+    { type: "user", timestamp: "2026-11-21T03:01:11.000Z", message: { role: "user", content: "<task-notification>\n<status>stopped</status>\n</task-notification>" } },
+  ].map(x => JSON.stringify(x)).join("\n");
+  expect(parseTranscript(lines).last).toBe(Date.parse("2026-11-20T18:01:00.000Z"));
+  expect(parseTranscript("").last).toBe(0);
+});

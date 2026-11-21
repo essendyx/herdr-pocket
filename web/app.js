@@ -109,7 +109,10 @@
   const byId = id => S.agents.find(a => a.id === id);
   const shellById = id => S.shells.find(x => x.id === id);
   const wsLabel = id => (S.spaces.find(s => s.id === id) || {}).label || id;
-  const shown = a => (a.status === "done" && seenDone[a.id] === a.since ? "idle" : a.status);
+  // Letzte Nachricht, bei neuen Agents ohne Nachricht die Startzeit
+  const recency = a => a.lastActive || a.since || 0;
+  // "fertig" gilt als gesehen, wenn der Server es meldet (alle Geräte) oder hier gerade markiert wurde
+  const shown = a => (a.status === "done" && (a.seen || seenDone[a.id] === a.since) ? "idle" : a.status);
 
   function ago(ms, status) {
     if (!ms) return "";
@@ -124,7 +127,7 @@
     return d.toLocaleDateString("de-DE", { weekday: "short" }).replace(".", "");
   }
 
-  function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("show"), 2200); }
+  function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add("show"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("show"), Math.min(8000, Math.max(2200, String(t).length * 65))); }
   async function act(fn, okText) {
     try { const r = await fn(); if (okText) toast(okText); return r; }
     catch (e) { toast(e.message || "Fehler"); throw e; }
@@ -222,22 +225,22 @@
       if (!ids.length) h = '<div class="empty">' + (q ? 'Kein Space passt zu „' + esc(state.q) + '“.' : "Keine Spaces.") + '</div>';
     } else {
       const all = S.agents.filter(a => textMatch(a) && (!state.filter || shown(a) === state.filter));
-      const pinned = all.filter(a => a.pinned).sort((x, y) => RANK[shown(x)] - RANK[shown(y)] || (y.lastActive || 0) - (x.lastActive || 0));
+      const pinned = all.filter(a => a.pinned).sort((x, y) => recency(y) - recency(x));
       const list = all.filter(a => !a.pinned);
       const grp = store.get("group", "status");
       h += '<div class="groupby" role="group" aria-label="Gruppieren"><button type="button" data-group="status" aria-pressed="' + (grp !== "project") + '">Nach Status</button><button type="button" data-group="project" aria-pressed="' + (grp === "project") + '">Nach Projekt</button></div>';
       if (pinned.length) h += '<div class="section-h"><span>Angeheftet</span></div><div class="list">' + pinned.map(a => cardHTML(a)).join("") + '</div>';
       if (grp === "project") {
-        // Projekte mit wartenden oder arbeitenden Agents zuerst, sonst alphabetisch
+        // Zuletzt aktives Projekt oben, in der Gruppe der zuletzt aktive Agent oben
         const by = new Map();
         list.forEach(a => { if (!by.has(a.project)) by.set(a.project, []); by.get(a.project).push(a); });
-        const best = g => Math.min(...g.map(a => RANK[shown(a)]));
-        [...by.entries()].sort((x, y) => best(x[1]) - best(y[1]) || x[0].localeCompare(y[0], "de")).forEach(([p, g]) => {
-          g.sort((x, y) => RANK[shown(x)] - RANK[shown(y)] || (y.lastActive || 0) - (x.lastActive || 0));
+        const recent = g => Math.max(0, ...g.map(recency));
+        [...by.entries()].sort((x, y) => recent(y[1]) - recent(x[1]) || x[0].localeCompare(y[0], "de")).forEach(([p, g]) => {
+          g.sort((x, y) => recency(y) - recency(x));
           h += '<div class="proj-h"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg><span class="pname">' + esc(p) + '</span><span class="pn">' + g.length + '</span></div><div class="list">' + g.map(a => cardHTML(a, true)).join("") + '</div>';
         });
       } else ["blocked", "working", "done", "idle"].forEach(s => {
-        const g = list.filter(a => shown(a) === s).sort((x, y) => (y.lastActive || 0) - (x.lastActive || 0));
+        const g = list.filter(a => shown(a) === s).sort((x, y) => recency(y) - recency(x));
         if (!g.length) return;
         h += '<div class="section-h"><span>' + ST[s] + '</span>' + (s === "done" ? '<button type="button" data-clear>Als gesehen markieren</button>' : "") + '</div><div class="list">' + g.map(a => cardHTML(a)).join("") + '</div>';
       });
@@ -287,12 +290,14 @@
   }
   // Angehängte Bilder im Eingabefeld: Platzhalter [Bild N], beim Senden durch den Pfad ersetzt
   const imgs = store.get("imgs", {});
-  const withPaths = (key, v) => v.replace(/\[Bild (\d+)\]/g, (m, n) => (imgs[key] && imgs[key][n]) || m);
+  const uploading = {};   // Agent -> laufende Bild-Uploads
+  const withPaths = (key, v) => v.replace(/\[Bild (\d+)\](?=(\S?))/g, (m, n, next) => { const p = imgs[key] && imgs[key][n]; return p ? p + (next ? " " : "") : m; });
 
   // Feed
   function itemHTML(x) {
     if (x.t === "user") return '<div class="msg-user">' + imgHTML(x.v) + '</div>';
     if (x.t === "text") return '<div class="msg-text">' + mdText(x.v) + '</div>';
+    if (x.t === "compact") return '<details class="compact"><summary><span>Unterhaltung ' + (x.trigger === "manual" ? "komprimiert" : "automatisch komprimiert") + '</span><small>Zusammenfassung</small></summary><div class="msg-text">' + mdText(x.v || "") + '</div></details>';
     if (x.t === "tool") return '<div class="tool"><span class="k">' + esc(x.k) + '</span><code>' + esc(x.a) + '</code>' + (x.s === "ok" ? '<span class="ok">✓</span>' : x.s === "err" ? '<span class="err">Fehler</span>' : '<span class="run">läuft</span>') + '</div>';
     if (x.t === "diff") return diffHTML(x, false);
     return "";
@@ -308,10 +313,31 @@
     const ex = t.explanation ? t.explanation.split("\n").map(l => l.trim()).filter(Boolean).map(l => /^[*-]\s+/.test(l) ? "<li>" + md(l.replace(/^[*-]\s+/, "")) + "</li>" : "<p>" + md(l) + "</p>").join("").replace(/(<li>.*?<\/li>)+/gs, m => "<ul>" + m + "</ul>") : "";
     return '<div class="tipcard"><div class="tiph"><span class="spark">✦</span>' + esc(t.tag || "Hinweis") + '</div><div class="tipt">' + md(t.line) + '</div>' +
       (ex ? '<details class="tipx"' + (tipOpen[a.id] ? " open" : "") + ' data-tipx="' + esc(a.id) + '"><summary>Erklärung</summary><div>' + ex + '</div></details>' : "") +
-      (opts.length ? '<div class="btnrow">' + opts.map(o => '<button type="button" class="btn' + (o.key === "1" ? " primary" : "") + '" data-tipkey="' + esc(o.key) + '">' + esc(TIP_LABEL[o.label] || o.label) + '</button>').join("") + '</div>'
+      (opts.length ? '<div class="btnrow">' + opts.filter(o => !(ex && /^Learn more$/i.test(o.label))).map((o, i) => '<button type="button" class="btn' + (i === 0 ? " primary" : "") + '" data-tipkey="' + esc(o.key) + '">' + esc(TIP_LABEL[o.label] || o.label) + '</button>').join("") +
+        // "Mehr erfahren" entfällt, wenn die Erklärung schon aufklappbar ist. Besprechen geht immer.
+        (opts.some(o => /^Chat in main session$/i.test(o.label)) ? "" : '<button type="button" class="btn" data-tipchat>Im Chat besprechen</button>') + '</div>'
         : '<div class="hint">Lade Auswahl …</div>') + '</div>';
   }
+  // MCP-Anmeldung: Link öffnen, bestätigen, danach die Adresse aus der Adresszeile hier einfügen
+  function authHTML(au) {
+    const href = (IOS_APP ? "x-safari-" : "") + au.url;
+    return '<div class="perm authcard"><div class="q">' + esc(au.server) + ' anmelden<small>MCP-Dienst braucht eine Anmeldung im Browser</small></div>' +
+      '<div class="opts"><a class="btn primary" href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">Anmeldung öffnen</a></div>' +
+      (au.paste ? '<ol class="authsteps"><li>Oben auf „Anmeldung öffnen“ tippen und den Zugriff bestätigen.</li><li>Danach zeigt der Browser eine Fehlerseite (localhost). Das ist normal.</li><li>Die komplette Adresse aus der Adresszeile kopieren, unten ins Eingabefeld einfügen und senden.</li></ol>' : '<div class="hint">Nach dem Bestätigen im Browser geht es hier von selbst weiter.</div>') +
+      '<div class="btnrow"><button type="button" class="btn ghost" data-authcancel>Anmeldung abbrechen</button></div></div>';
+  }
+  // Offenes Menü im Terminal (z. B. /mcp): Inhalt zeigen und mit Tasten bedienen
+  function panelHTML(p) {
+    const K = [["left", "←"], ["up", "↑"], ["down", "↓"], ["right", "→"], ["enter", "Enter"], ["tab", "Tab"], ["esc", "Esc"]];
+    return '<div class="perm panelcard"><div class="q">Menü im Terminal<small>' + esc(p.footer || "Mit den Pfeiltasten bedienen, Esc schließt") + '</small></div><pre>' + esc(p.text) + '</pre>' +
+      '<div class="btnrow">' + K.map(([k, l]) => '<button type="button" class="btn" data-pkey="' + k + '">' + l + '</button>').join("") + '</div></div>';
+  }
   function dialogHTML(d) {
+    if (d.kind === "trust") {
+      // Erster Start in einem Ordner: Claude fragt, ob es dem Ordner vertrauen darf
+      return '<div class="perm trust"><div class="q">Diesem Ordner vertrauen?<small>Claude darf hier Dateien lesen, ändern und Befehle ausführen</small></div>' + (d.detail ? '<code>' + esc(d.detail) + '</code>' : "") +
+        '<div class="opts"><button type="button" class="primary" data-opt="2" data-hash="' + esc(d.hash) + '">Ja, vertrauen</button><button type="button" data-opt="1" data-hash="' + esc(d.hash) + '">Nein, beenden</button></div></div>';
+    }
     if (d.kind === "question") {
       const opts = d.options.map((o, i) => ({ o, i, desc: (d.descs || [])[i] || "" })).filter(x => x.i + 1 !== d.freeText);
       return '<div class="perm ask-q"><div class="q">' + esc(d.question || "Frage") + (d.title ? '<small>' + esc(d.title) + '</small>' : "") + '</div>' +
@@ -339,6 +365,8 @@
     flush();
     if (a.status === "working") h += '<div class="thinking"><i></i><i></i><i></i>Arbeitet</div>';
     if (a.status === "blocked" && a.dialog) h += dialogHTML(a.dialog);
+    if (F.auth) h += authHTML(F.auth);
+    if (F.panel) h += panelHTML(F.panel);
     if (F.tip) h += tipHTML(F.tip);
     h += (a.queue || []).map(q => '<div class="queued"><div>' + esc(q.text) + '</div><small>Wird nach diesem Zug gesendet<button type="button" data-qnow="' + esc(q.id) + '">Jetzt senden</button><button type="button" data-qdel="' + esc(q.id) + '">Verwerfen</button></small></div>').join("");
     return h;
@@ -424,7 +452,7 @@
           : '<pre class="term" id="term">' + esc(screens[a.id] || "Lade …") + '</pre>') +
         '<div class="composer gutter">' +
           '<div class="keys">' +
-            (a.status === "blocked" && a.dialog ? a.dialog.options.map((o, i) => i + 1 === a.dialog.freeText ? "" : '<button type="button" data-opt="' + (i + 1) + '" data-hash="' + esc(a.dialog.hash) + '">' + (i + 1) + ' ' + esc(o.split(/[ ,]/)[0]) + '</button>').join("") : "") +
+            (a.status === "blocked" && a.dialog && a.dialog.kind !== "trust" ? a.dialog.options.map((o, i) => i + 1 === a.dialog.freeText ? "" : '<button type="button" data-opt="' + (i + 1) + '" data-hash="' + esc(a.dialog.hash) + '">' + (i + 1) + ' ' + esc(o.split(/[ ,]/)[0]) + '</button>').join("") : "") +
             '<button type="button" data-key="Enter">⏎ Enter</button><button type="button" data-key="Esc">Esc</button><button type="button" data-key="/compact">/compact</button><button type="button" data-key="/clear">/clear</button>' +
             // Pfeile wirken nur im Terminal sichtbar (Verlauf, Menüs), im Chat passiert scheinbar nichts
             (state.view === "term" ? '<button type="button" data-key="↑">↑</button><button type="button" data-key="↓">↓</button>' : "") +
@@ -615,6 +643,11 @@
     try { feeds[id] = await API.get("/api/agents/" + encodeURIComponent(id) + "/feed"); } catch (_) { return; }
     if (state.agent === id) renderMain();
   }
+  // Anmeldefenster u. Ä. stehen nur im Terminal und ändern den Verlauf nicht: bei offenem, laufendem Agent regelmäßig nachsehen
+  setInterval(() => {
+    const a = state.agent && byId(state.agent);
+    if (a && state.view === "chat" && document.visibilityState === "visible" && (a.status === "working" || (feeds[a.id] || {}).auth || (feeds[a.id] || {}).panel)) loadFeed(a.id);
+  }, 4000);
   async function loadChanges(id) {
     try { changes[id] = (await API.get("/api/agents/" + encodeURIComponent(id) + "/changes")).changes; } catch (_) { changes[id] = []; }
     if (state.agent === id && state.view === "changes") renderMain();
@@ -639,7 +672,13 @@
     screenTimer = setTimeout(pollScreen, 1000);
   }
   function renderSide() { $("#sideTl").innerHTML = tlHTML(); }
-  function renderAll() { renderConn(); renderList(); renderMain(); renderSide(); }
+  // Geöffneter Chat zählt als gesehen, wie das Fokussieren in herdr: "fertig" wird "bereit"
+  function markSeen() {
+    const a = state.agent && document.visibilityState !== "hidden" && byId(state.agent);
+    if (a && a.status === "done" && !a.seen && seenDone[a.id] !== a.since) { seenDone[a.id] = a.since; store.set("seenDone", seenDone); postSeen([a.id]); }
+  }
+  function postSeen(ids) { if (ids.length) API.post("/api/seen", { ids }).catch(() => {}); }
+  function renderAll() { markSeen(); renderConn(); renderList(); renderMain(); renderSide(); }
 
   // Aktionen
   const enc = encodeURIComponent;
@@ -669,9 +708,17 @@
   async function send() {
     const ta = $("#msg"); if (!ta) return;
     const key = state.shell ? "s:" + state.shell : state.agent;
+    if (uploading[key] && uploading[key].length) { toast("Bild lädt noch …"); await Promise.all(uploading[key]); }
     const v = withPaths(key, ta.value.trim()); if (!v) { ta.focus(); return; }
     try {
+      const auth = !state.shell && (feeds[state.agent] || {}).auth;
       if (state.shell) { await API.post("/api/panes/" + enc(state.shell) + "/line", { text: v }); }
+      else if (auth && auth.paste) {
+        // MCP-Anmeldung wartet auf die Adresse aus dem Browser: direkt dorthin, nicht in die Warteschlange
+        const id = state.agent;
+        await API.post("/api/agents/" + enc(id) + "/auth", { text: v });
+        toast("Adresse an die Anmeldung geschickt"); setTimeout(() => loadFeed(id), 1500);
+      }
       else if ((byId(state.agent) || {}).status === "blocked" && (byId(state.agent).dialog || {}).freeText) {
         const d = byId(state.agent).dialog, seen = dialogSeen[state.agent];
         if (!seen || Date.now() - seen.at < SETTLE_MS) { toast("Neue Frage, bitte erst lesen"); return; }
@@ -680,14 +727,16 @@
       } else {
         const r = await API.post("/api/agents/" + enc(state.agent) + "/prompt", { text: v });
         toast(r.queued ? "In der Warteschlange" : "Gesendet");
+        // Slash-Befehle öffnen oft ein Menü im Terminal: gleich nachsehen
+        if (v.startsWith("/")) { const id = state.agent; setTimeout(() => loadFeed(id), 700); setTimeout(() => loadFeed(id), 2000); }
       }
-      ta.value = ""; delete drafts[key]; store.set("drafts", drafts); delete imgs[key]; store.set("imgs", imgs); autoGrow(ta);
+      ta.value = ""; closeSlash(); delete drafts[key]; store.set("drafts", drafts); delete imgs[key]; store.set("imgs", imgs); autoGrow(ta);
     } catch (e) { toast(e.message); }
   }
   async function sendKey(label) {
     const id = state.shell || state.agent; if (!id) return;
     try {
-      if (label.startsWith("/")) await API.post("/api/agents/" + enc(id) + "/prompt", { text: label, now: true });
+      if (label.startsWith("/")) { await API.post("/api/agents/" + enc(id) + "/prompt", { text: label, now: true }); setTimeout(() => loadFeed(id), 700); setTimeout(() => loadFeed(id), 2000); }
       else await API.post("/api/panes/" + enc(id) + "/keys", { keys: [KEYMAP[label] || label] });
       toast("Gesendet: " + label);
     } catch (e) { toast(e.message); }
@@ -862,7 +911,7 @@
     }
     if (t.dataset.space) { state.space = t.dataset.space; state.q = ""; $("#q").value = ""; $("#listScroll").scrollTop = 0; renderList(); return; }
     if (t.hasAttribute("data-spaces-back")) { state.space = null; renderList(); return; }
-    if (t.hasAttribute("data-clear")) { S.agents.forEach(a => { if (a.status === "done") seenDone[a.id] = a.since; }); store.set("seenDone", seenDone); toast("Als gesehen markiert"); renderAll(); return; }
+    if (t.hasAttribute("data-clear")) { const ids = S.agents.filter(a => a.status === "done").map(a => a.id); S.agents.forEach(a => { if (a.status === "done") seenDone[a.id] = a.since; }); store.set("seenDone", seenDone); postSeen(ids); toast("Als gesehen markiert"); renderAll(); return; }
     if (t.dataset.tab) { setTab(t.dataset.tab); return; }
     if (t.hasAttribute("data-new")) { openSheet(); return; }
     if (t.hasAttribute("data-back")) { goBack(); return; }
@@ -892,12 +941,32 @@
       return;
     }
     if (t.dataset.key) { armed = null; sendKey(t.dataset.key); return; }
-    if (t.hasAttribute("data-photo")) { $("#photoInput").click(); return; }
+    // iOS öffnet die Tastatur nur direkt nach einem Tippen: Feld jetzt fokussieren, dann bleibt es nach der Fotoauswahl aktiv
+    if (t.hasAttribute("data-photo")) { const ta = $("#msg"); if (ta) ta.focus(); $("#photoInput").click(); return; }
     if (t.dataset.img) { showImage(t.dataset.img); return; }
     if (t.dataset.group) { store.set("group", t.dataset.group); renderList(); return; }
-    if (t.dataset.tipkey != null) {
-      const id = state.agent, key = t.dataset.tipkey;
-      if (key === "1") tipOpen[id] = true;
+    if (t.dataset.slash) { pickSlash(t.dataset.slash); return; }
+    if (t.dataset.pkey) { const id = state.agent; if (id) API.post("/api/panes/" + enc(id) + "/keys", { keys: [t.dataset.pkey] }).then(() => { setTimeout(() => loadFeed(id), 400); setTimeout(() => loadFeed(id), 1200); }, e => toast(e.message)); return; }
+    if (t.hasAttribute("data-authcancel")) { const id = state.agent; if (id) API.post("/api/panes/" + enc(id) + "/keys", { keys: ["esc"] }).then(() => { toast("Anmeldung abgebrochen"); setTimeout(() => loadFeed(id), 800); }, e => toast(e.message)); return; }
+    if (t.dataset.tipkey != null || t.hasAttribute("data-tipchat")) {
+      const id = state.agent, tip = (feeds[id] || {}).tip, opts = (tip && tip.options) || [];
+      let key = t.dataset.tipkey;
+      const opt = opts.find(o => o.key === key);
+      if (tip && (t.hasAttribute("data-tipchat") || (opt && /^Chat in main session$/i.test(opt.label)))) {
+        // Nicht an Claude schicken: Hinweis als Zitat ins Eingabefeld, du ergänzt und sendest selbst. Der Tipp gilt als verstanden.
+        const body = [(tip.tag || "Hinweis") + " · " + tip.line].concat(tip.explanation ? ["", ...tip.explanation.split("\n").map(l => l.trim()).filter(Boolean)] : []);
+        const ta = $("#msg");
+        if (ta) {
+          ta.value = (ta.value.trim() ? ta.value.replace(/\s*$/, "") + "\n\n" : "") + "Zu diesem Hinweis:\n\n" + body.map(l => l ? "> " + l : ">").join("\n") + "\n\n";
+          drafts[id] = ta.value; store.set("drafts", drafts); autoGrow(ta);
+          ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length);
+        }
+        const done = opts.find(o => /^Understood$/i.test(o.label)) || opts.find(o => /^Dismiss$/i.test(o.label)) || opts.find(o => o.key === "0");
+        if (!done) return;
+        key = done.key;
+        toast("Im Eingabefeld, ergänze und sende selbst");
+      }
+      if (key === "1" && !(opt && /^Chat/i.test(opt.label))) tipOpen[id] = true;
       act(() => API.post("/api/agents/" + enc(id) + "/tip", { key })).then(() => { setTimeout(() => loadFeed(id), 700); setTimeout(() => loadFeed(id), 2000); }).catch(() => {});
       return;
     }
@@ -951,15 +1020,87 @@
   document.addEventListener("input", e => {
     if (e.target.id === "q") { state.q = e.target.value; renderList(); }
     if (e.target.id === "msg") {
-      autoGrow(e.target);
+      autoGrow(e.target); updateSlash(e.target);
       const key = state.shell ? "s:" + state.shell : state.agent;
       if (key) { drafts[key] = e.target.value; store.set("drafts", drafts); }
     }
   });
   document.addEventListener("keydown", e => {
     if (e.target.id === "msg" && (e.key === "Backspace" || e.key === "Delete") && !e.ctrlKey && !e.altKey && !e.metaKey && delImgToken(e.target, e.key === "Backspace")) { e.preventDefault(); return; }
-    if (e.target.id === "msg" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); }
+    if (e.isComposing || e.altKey) return;
+    const inMsg = e.target.id === "msg", ta = inMsg ? e.target : null;
+    // Vorschläge für Slash-Befehle: Pfeile wählen, Enter/Tab übernimmt, Esc schließt
+    if (ta && slash && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); slash.i = (slash.i + (e.key === "ArrowDown" ? 1 : -1) + slash.items.length) % slash.items.length; drawSlash(); return; }
+      // Steht der gewählte Befehl schon vollständig da, schickt Enter ihn direkt ab
+      if (e.key === "Enter" && ta.value.trim() === "/" + slash.items[slash.i].name) { e.preventDefault(); closeSlash(); send(); return; }
+      if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); pickSlash(slash.items[slash.i].name); return; }
+      if (e.key === "Escape") { e.preventDefault(); closeSlash(); return; }
+    }
+    const typing = !inMsg && e.target.closest && e.target.closest("input, textarea, select, [contenteditable]");
+    // Offenes Menü im Terminal: Pfeile, Enter, Esc, Tab gehen dorthin, solange im Feld nichts steht
+    const F = state.agent && !state.shell && state.view === "chat" && feeds[state.agent];
+    const PK = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right", Enter: "enter", Escape: "esc", Tab: "tab" };
+    if (F && F.panel && PK[e.key] && !e.shiftKey && !e.ctrlKey && !e.metaKey && !typing && (!ta || !ta.value.trim())) {
+      e.preventDefault();
+      const id = state.agent;
+      API.post("/api/panes/" + enc(id) + "/keys", { keys: [PK[e.key]] }).then(() => { setTimeout(() => loadFeed(id), 400); setTimeout(() => loadFeed(id), 1200); }, err => toast(err.message));
+      return;
+    }
+    if (!ta) return;
+    // Enter schickt ab, Shift+Enter macht eine neue Zeile
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); return; }
+    // Frühere eigene Nachrichten mit den Pfeiltasten holen, nur bei leerem Feld oder unveränderter geholter Nachricht
+    if ((e.key === "ArrowUp" || e.key === "ArrowDown") && !e.shiftKey && !e.ctrlKey && !e.metaKey && state.agent && !state.shell) {
+      const on = hist.key === state.agent && hist.i >= 0 && ta.value === hist.val;
+      if (ta.value && !on) return;
+      const list = ((feeds[state.agent] || {}).feed || []).filter(x => x.t === "user").map(x => x.v);
+      if (!list.length) return;
+      let i;
+      if (e.key === "ArrowUp") i = on ? Math.max(0, hist.i - 1) : list.length - 1;
+      else { if (!on) return; i = hist.i + 1; }
+      e.preventDefault();
+      if (i >= list.length) { hist = { key: "", i: -1, val: "" }; ta.value = ""; }
+      else { hist = { key: state.agent, i, val: list[i] }; ta.value = list[i]; }
+      autoGrow(ta); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch {}
+    }
   });
+  let hist = { key: "", i: -1, val: "" };
+
+  // Autovervollständigung für Slash-Befehle (eingebaut, eigene, Projekt, Plugins), Liste pro Agent einmal vom Server
+  const cmds = {};
+  let slash = null;   // { items, i }
+  function closeSlash() { slash = null; const el = $(".slash"); if (el) el.remove(); }
+  function updateSlash(ta) {
+    const id = state.agent, m = !state.shell && id && ta.value.match(/^\/(\S*)$/);
+    if (!m) { closeSlash(); return; }
+    if (!cmds[id]) {
+      cmds[id] = [];
+      API.get("/api/agents/" + enc(id) + "/commands").then(r => { cmds[id] = r.commands || []; const t = $("#msg"); if (t && state.agent === id) updateSlash(t); }, () => { delete cmds[id]; });
+      return;
+    }
+    const q = m[1].toLowerCase(), list = cmds[id];
+    const starts = c => c.name.toLowerCase().startsWith(q) || c.name.toLowerCase().split(":").pop().startsWith(q);
+    const items = list.filter(starts).concat(list.filter(c => !starts(c) && c.name.toLowerCase().includes(q)));
+    if (!items.length) { closeSlash(); return; }
+    const prev = slash && slash.items[slash.i];
+    const i = prev ? Math.max(0, items.findIndex(c => c.name === prev.name)) : 0;
+    slash = { items, i };
+    drawSlash();
+  }
+  function drawSlash() {
+    const wrap = $(".msgwrap"); if (!wrap || !slash) return;
+    let el = $(".slash");
+    if (!el) { el = document.createElement("div"); el.className = "slash"; el.setAttribute("role", "listbox"); el.addEventListener("mousedown", e => e.preventDefault()); wrap.appendChild(el); }
+    el.innerHTML = slash.items.map((c, k) => '<button type="button" role="option" class="' + (k === slash.i ? "on" : "") + '" data-slash="' + esc(c.name) + '"><b>/' + esc(c.name) + '</b>' + (c.desc ? '<small>' + esc(c.desc) + '</small>' : "") + '</button>').join("");
+    const on = el.querySelector(".on"); if (on && on.scrollIntoView) on.scrollIntoView({ block: "nearest" });
+  }
+  function pickSlash(name) {
+    const ta = $("#msg"); if (!ta) return;
+    ta.value = "/" + name + " "; closeSlash(); autoGrow(ta);
+    const key = state.agent; if (key) { drafts[key] = ta.value; store.set("drafts", drafts); }
+    ta.focus(); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch {}
+  }
   $("#photoInput").addEventListener("change", e => {
     const f = e.target.files && e.target.files[0]; e.target.value = "";
     attachImage(f);
@@ -985,20 +1126,37 @@
     e.preventDefault();
     fs.reduce((p, f) => p.then(() => attachImage(f)), Promise.resolve());
   });
-  async function attachImage(f) {
-    if (!f || !state.agent) return;
+  // Platzhalter sofort einsetzen und ins Eingabefeld springen (am Handy öffnet sich die Tastatur nur direkt nach dem Antippen), Upload läuft dahinter
+  function attachImage(f) {
+    if (!f || !state.agent) return Promise.resolve();
+    const key = state.agent, m = imgs[key] || (imgs[key] = {});
+    const n = Math.max(0, ...Object.keys(m).map(Number)) + 1, tok = "[Bild " + n + "]";
+    m[n] = "";
+    const ta = $("#msg");
+    if (ta) {
+      ta.value = (ta.value ? ta.value.replace(/\s*$/, " ") : "") + tok + " "; autoGrow(ta);
+      drafts[key] = ta.value; store.set("drafts", drafts);
+      ta.focus(); try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch {}
+    }
     const form = new FormData(); form.append("image", f, f.name || "bild." + (f.type.split("/")[1] || "png"));
     toast("Lade Bild hoch …");
-    try {
-      const r = await API.upload("/api/agents/" + enc(state.agent) + "/image", form);
-      const key = state.agent, m = imgs[key] || (imgs[key] = {});
-      const n = Math.max(0, ...Object.keys(m).map(Number)) + 1;
+    const job = API.upload("/api/agents/" + enc(key) + "/image", form).then(r => {
       m[n] = r.path; store.set("imgs", imgs);
-      const ta = $("#msg"); ta.value = (ta.value ? ta.value.replace(/\s*$/, " ") : "") + "[Bild " + n + "]"; autoGrow(ta);
-      drafts[state.agent] = ta.value; store.set("drafts", drafts);
       toast("Bild angehängt");
-    } catch (err) { toast(err.message); }
+    }, err => {
+      delete m[n]; store.set("imgs", imgs);
+      const drop = v => v.replace(tok + " ", "").replace(tok, "");
+      const t = $("#msg");
+      if (t && state.agent === key) { t.value = drop(t.value); autoGrow(t); drafts[key] = t.value; }
+      else if (drafts[key]) drafts[key] = drop(drafts[key]);
+      store.set("drafts", drafts);
+      toast(err.message);
+    }).finally(() => { uploading[key] = (uploading[key] || []).filter(x => x !== job); });
+    (uploading[key] || (uploading[key] = [])).push(job);
+    return job;
   }
+  // Zurück in die App mit offenem Chat: der gilt jetzt als gesehen
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && state.agent) renderAll(); });
   addEventListener("resize", () => {
     if (isDesk()) app.dataset.mview = "main";
     else if (isListTab(state.tab)) app.dataset.mview = state.agent || state.shell ? "main" : "list";
@@ -1095,7 +1253,7 @@
   })();
   // Wischgeste zurück wie in anderen iOS-Apps: nach rechts ziehen, die Ansicht folgt dem Finger
   (() => {
-    const NO = ".keys, .cfgrow, .tablewrap, .lightbox, .term, .diff pre, textarea, input, select, .sheet-wrap";
+    const NO = ".keys, .cfgrow, .tablewrap, .lightbox, .panelcard pre, .term, .diff pre, textarea, input, select, .sheet-wrap";
     let g = null;
     const target = () => {
       if (isDesk()) return null;

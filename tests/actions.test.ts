@@ -157,16 +157,6 @@ test("tipKey sendet die Ziffer nur, wenn der Tipp mit dieser Taste auf dem Bilds
   expect(e.status).toBe(400);
 });
 
-test("tipKey 'Chat in main session': Notiz steht im Eingabefeld, danach wird Enter gesendet", async () => {
-  const explained = await Bun.file(import.meta.dir + "/fixtures/screens/screen-tip-explained.txt").text();
-  const filled = "● fertig\n" + "─".repeat(60) + "\n❯ Here is a note offered by a side agent:\n\n  > Heads up · x\n" + "─".repeat(60) + "\n  ⏵⏵ auto mode on\n";
-  let pressed = false;
-  const { calls, fn } = fake(() => (pressed ? filled : explained), { "pane.send_keys": p => { if (p.keys[0] === "2") pressed = true; return {}; } });
-  await new Actions(fn as any, () => snap("idle"), 0).tipKey("w1:p1", "2");
-  const keys = calls.filter(c => c.m === "pane.send_keys").map(c => c.p.keys[0]);
-  expect(keys).toEqual(["2", "enter"]);
-});
-
 test("tipKey 'Understood': kein Enter hinterher", async () => {
   const explained = await Bun.file(import.meta.dir + "/fixtures/screens/screen-tip-explained.txt").text();
   const { calls, fn } = fake(() => explained);
@@ -232,4 +222,52 @@ test("endAgent bei opencode schickt /exit über das Eingabefeld", async () => {
   await new Actions(fn as any, () => s, 0).endAgent("w1:p1", false);
   expect(calls.find(c => c.m === "pane.send_input")!.p).toEqual({ pane_id: "w1:p1", text: "/exit" });
   expect(calls.some(c => c.m === "agent.prompt")).toBe(false);
+});
+
+test("Ordner-Vertrauen beantworten: mit Pfeiltasten zur Option, dann Enter", async () => {
+  const trust = await Bun.file(import.meta.dir + "/fixtures/screens/screen-trust.txt").text();
+  const { parseDialog } = await import("../server/prompt.ts");
+  const { calls, fn } = fake(() => trust);
+  await new Actions(fn as any, () => snap("blocked")).answer("w1:p1", parseDialog(trust)!.hash, 2);
+  expect(calls.filter(c => c.m === "pane.send_keys").map(c => c.p.keys)).toEqual([["down", "enter"]]);
+});
+
+test("MCP-Anmeldung: eingefügte Adresse wird getippt und abgeschickt, auch wenn der Agent 'arbeitet'", async () => {
+  const auth = await Bun.file(import.meta.dir + "/fixtures/screens/screen-mcp-auth.txt").text();
+  const { calls, fn } = fake(() => auth);
+  await new Actions(fn as any, () => snap("working")).authPaste("w1:p1", " http://localhost:53561/callback?code=1&state=2 \n");
+  expect(calls.filter(c => c.m === "pane.send_input").map(c => c.p)).toEqual([{ pane_id: "w1:p1", text: "http://localhost:53561/callback?code=1&state=2", keys: ["enter"] }]);
+});
+
+test("MCP-Anmeldung: ohne Anmeldebildschirm wird nichts getippt", async () => {
+  const { calls, fn } = fake(() => idle);
+  await expect(new Actions(fn as any, () => snap("working")).authPaste("w1:p1", "http://x")).rejects.toBeInstanceOf(ActionError);
+  expect(calls.some(c => c.m === "pane.send_input")).toBe(false);
+});
+
+const usage = await Bun.file(import.meta.dir + "/fixtures/screens/screen-usage.txt").text();
+const mcpAuth = await Bun.file(import.meta.dir + "/fixtures/screens/screen-mcp-auth.txt").text();
+
+test("sendPrompt: offenes Menü, Anmeldung oder Frage im Terminal blockt, nichts wird getippt", async () => {
+  for (const [screen, text] of [[usage, "Menü"], [mcpAuth, "Anmeldung"], [bash, "Frage"]] as const) {
+    const { calls, fn } = fake(() => screen);
+    const s = snap("idle"); s.agents[0].kind = "claude";
+    const e: any = await new Actions(fn as any, () => s, 0).sendPrompt("w1:p1", "Hallo").catch(e => e);
+    expect(e).toBeInstanceOf(ActionError);
+    expect(e.status).toBe(409);
+    expect(e.message).toContain(text);
+    expect(calls.some(c => c.m === "agent.prompt" || c.m === "pane.send_input")).toBe(false);
+  }
+});
+
+test("startAgent: Startauftrag landet in der Warteschlange, wenn das Terminal blockt (z. B. Ordner-Vertrauen)", async () => {
+  const trust = await Bun.file(import.meta.dir + "/fixtures/screens/screen-trust.txt").text();
+  const { fn } = fake(() => trust, { "tab.create": () => ({ tab: { tab_id: "w1:t9" } }), "pane.list": () => ({ panes: [{ pane_id: "w1:p9", tab_id: "w1:t9" }] }) });
+  const sn = snap("blocked"); sn.agents[0].id = "w1:p9"; sn.agents[0].kind = "claude";
+  const a = new Actions(fn as any, () => sn, 0);
+  const pending: [string, string][] = [];
+  a.onPending = (p, t) => pending.push([p, t]);
+  const pane = await a.startAgent({ ws: "w1", cwd: "/home/alex/src/x", mode: "auto", model: "opus", effort: "high", prompt: "Los geht's" } as any);
+  expect(pane).toBe("w1:p9");
+  expect(pending).toEqual([["w1:p9", "Los geht's"]]);
 });

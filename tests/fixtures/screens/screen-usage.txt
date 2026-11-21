@@ -1,0 +1,40 @@
+
+❯ /clear
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+  Settings  Status   Config   Usage   Stats
+
+  Current week (all models)
+  ████████████████                                   32% used
+  Resets Nov 23, 2pm (Europe/Berlin)
+
+  Current week (Fable)
+  ████████▌                                          17% used
+  Resets Nov 23, 2pm (Europe/Berlin)
+
+  What's contributing to your usage?
+  Approximate · sessions on this computer only
+
+  Last 24h · shares overlap
+
+  72%  Start fresh when you switch tasks · run /clear
+  26%  Turn off skills you don't use · 14k tokens per request
+  23%  Check which models your subagents use · share covers whole sessions, not
+       only subagents
+  11%  Turn off claude-in-chrome when you don't need it
+
+  MCP servers             % of usage
+  claude-in-chrome               11%
+  higgsfield                     10%
+
+  Usage credits
+  Usage credits are off · /usage-credits to turn them on
+
+  Session
+  Estimated cost:         $0.0000
+  Total duration (API):   0s
+  Total duration (wall):  1d 15h 10m
+  Total code changes:     0 lines added, 0 lines removed
+  Usage:                  0 input, 0 output, 0 cache read, 0 cache write
+
+
+  Plugin skill-listing footprint                                                                                      ↓

@@ -4,11 +4,12 @@ import { join } from "path";
 
 export type FeedItem =
   | { t: "user"; v: string }
+  | { t: "compact"; trigger: string; v: string }
   | { t: "text"; v: string }
   | { t: "tool"; k: string; a: string; s: "ok" | "run" | "err" }
   | { t: "diff"; f: string; add: number; del: number; lines: string[] };
 export type PlanStep = [string, "done" | "run" | "todo"];
-export type SessionInfo = { feed: FeedItem[]; plan: PlanStep[]; subs: number; ctx: number; model: string | null; effort: string | null; mode: string | null; changes: FeedItem[] };
+export type SessionInfo = { last: number; feed: FeedItem[]; plan: PlanStep[]; subs: number; ctx: number; model: string | null; effort: string | null; mode: string | null; changes: FeedItem[] };
 
 const MAX_DIFF_LINES = 40;
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
@@ -34,6 +35,13 @@ function userText(content: any): string | null {
   return null;
 }
 
+// Zusammenfassung nach einer Komprimierung: Einleitung, interne Blöcke und Schlusshinweise weglassen
+function compactText(s: string): string {
+  return s.replace(/<system-reminder>[\s\S]*?<\/system-reminder>/g, "")
+    .replace(/^This session is being continued[^\n]*\n?/, "")
+    .replace(/\n*If you need specific details from before compaction[\s\S]*$/, "")
+    .trim();
+}
 const isInternal = (s: string) => /^\s*<(system-reminder|command-|local-command|task-notification|bash-)/.test(s);
 
 export function parseTranscript(text: string): SessionInfo {
@@ -44,14 +52,29 @@ export function parseTranscript(text: string): SessionInfo {
   const tasks = new Map<string, { title: string; status: string }>();
   let ctx = 0, model: string | null = null, effort: string | null = null, mode: string | null = null;
   const openAgents = new Set<string>();
+  let compactTrigger = "";
+  let last = 0;
 
   for (const line of text.split("\n")) {
     if (!line.trim()) continue;
     let o: any;
     try { o = JSON.parse(line); } catch { continue; }
+    // Letzte echte Nachricht. Beim Fortsetzen nach einem Neustart schreibt Claude nur System- und Metazeilen, die zählen nicht.
+    if (o && o.timestamp && (o.type === "assistant" || (o.type === "user" && !o.isMeta && !o.isCompactSummary && !isInternal(userText(o.message?.content) || "")))) {
+      const ts = Date.parse(o.timestamp);
+      if (ts > last) last = ts;
+    }
     if (!o || typeof o !== "object") continue;
 
     if (o.type === "permission-mode") { mode = o.permissionMode ?? mode; continue; }
+    if (o.type === "system" && o.subtype === "compact_boundary") { compactTrigger = String(o.compactMetadata?.trigger || ""); continue; }
+    if (o.type === "user" && o.isCompactSummary) {
+      const c = o.message?.content;
+      const raw = typeof c === "string" ? c : Array.isArray(c) ? c.map((x: any) => (x && x.type === "text" ? x.text : "")).join("\n") : "";
+      feed.push({ t: "compact", trigger: compactTrigger, v: compactText(raw) });
+      compactTrigger = "";
+      continue;
+    }
 
     if (o.type === "assistant" && o.message && typeof o.message === "object") {
       if (o.isSidechain) continue;
@@ -110,7 +133,13 @@ export function parseTranscript(text: string): SessionInfo {
         }
         continue;
       }
-      if (o.isMeta) continue;
+      if (o.isMeta) {
+        // Claude Code bettet ein eingefügtes Bild als "[Image #N]" ein und nennt den Pfad in einer Meta-Zeile danach
+        const srcs = [...(userText(content) || "").matchAll(/\[Image: source: ([^\]\n]+)\]/g)].map(m => m[1].trim());
+        const last = feed[feed.length - 1];
+        if (srcs.length && last && last.t === "user") last.v = last.v.replace(/\[Image #\d+\]/g, m => srcs.shift() ?? m);
+        continue;
+      }
       const t = userText(content);
       if (t && t.trim() && !isInternal(t)) feed.push({ t: "user", v: t });
     }
@@ -119,7 +148,7 @@ export function parseTranscript(text: string): SessionInfo {
   if (!plan.length && tasks.size) {
     plan = [...tasks.values()].map(t => [t.title, t.status === "completed" ? "done" : t.status === "in_progress" ? "run" : "todo"]);
   }
-  return { feed, plan, subs: openAgents.size, ctx, model, effort, mode, changes: feed.filter(x => x.t === "diff") };
+  return { last, feed, plan, subs: openAgents.size, ctx, model, effort, mode, changes: feed.filter(x => x.t === "diff") };
 }
 
 // Große Verläufe nur ab dem Ende lesen (ab einer Zeilengrenze), damit der Server nicht blockiert

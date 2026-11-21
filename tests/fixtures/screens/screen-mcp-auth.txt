@@ -1,0 +1,23 @@
+● Ich kann die Anmeldung jetzt starten.
+
+✻ Baked for 9s · done 1:26 PM
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+  Authenticate with higgsfield
+
+  · Waiting for you to sign in with your browser…
+
+  Browser didn't open? Use the URL below to sign in (c to copy)
+
+https://example.ai/oauth/authorize?response_type=code&client_id=https%3A%2F%2Fclaude.ai%2Foauth%2Fclaude-code
+-client-metadata&code_challenge=abc&redirect_uri=htt
+p%3A%2F%2Flocalhost%3A53561%2Fcallback&state=xyz&scope=openid+email+offline_acc
+ess&prompt=consent
+
+  Hold Shift while selecting to use your terminal's native copy
+
+  If the redirect page shows a connection error, paste the URL from your browser's address bar
+  ╭──────────────────────────────────────────────────╮
+  │                                                  │
+  ╰──────────────────────────────────────────────────╯
+
+  Enter to submit · Esc to go back

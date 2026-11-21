@@ -33,6 +33,14 @@ beforeAll(() => {
       if (u.pathname.endsWith("/image")) { calls.push({ m: req.method, p: decodeURIComponent(u.pathname), body: null }); return J({ path: "/home/alex/Bilder/herdr-app-x.png" }); }
       if (u.pathname === "/api/activity") return J({ entries: [] });
       if (u.pathname === "/api/settings") return J({ notify: { blocked: true, done: true, working: false }, quiet: true });
+      if (u.pathname.endsWith("/feed") && withCompact) return J({ feed: [{ t: "user", v: "Vorher" }, { t: "compact", trigger: "auto", v: "Summary:\n1. **Ziel:** App bauen" }, { t: "user", v: "Weiter" }], screen: null, dialog: null });
+      if (u.pathname.endsWith("/prompt") && blockSend) { calls.push({ m: req.method, p: decodeURIComponent(u.pathname), body: await req.json().catch(() => null) }); return new Response(JSON.stringify({ error: "Im Terminal ist ein Menü offen. Erst bedienen oder mit Esc schließen, dann senden." }), { status: 409, headers: { "content-type": "application/json" } }); }
+      if (u.pathname.endsWith("/commands") && manyCmds) return J({ commands: Array.from({ length: 20 }, (_, i) => ({ name: "cmd" + i, desc: "" })) });
+      if (u.pathname.endsWith("/commands")) return J({ commands: [{ name: "clear", desc: "Leeren" }, { name: "compact", desc: "Zusammenfassen" }, { name: "commit-commands:commit", desc: "Commit" }, { name: "mcp", desc: "MCP" }] });
+      if (u.pathname.endsWith("/feed") && withHist) return J({ feed: [{ t: "user", v: "erste" }, { t: "text", v: "Antwort" }, { t: "user", v: "zweite\nmit Zeile" }, { t: "user", v: "dritte" }], screen: null, dialog: null, tip: null, auth: null, panel: null });
+      if (u.pathname.endsWith("/feed") && withPanel) return J({ feed: [{ t: "user", v: "Hallo" }], screen: null, dialog: null, tip: null, auth: null, panel: { text: "Manage MCP servers\n❯ 1. higgsfield", footer: "↑↓ to navigate · Enter to confirm · Esc to cancel" } });
+      if (u.pathname.endsWith("/feed") && withAuth) return J({ feed: [{ t: "user", v: "Hallo" }], screen: null, dialog: null, tip: null, auth: { server: "higgsfield", url: "https://example.ai/oauth?a=1&redirect_uri=http%3A%2F%2Flocalhost%3A5%2Fcallback", paste: true } });
+      if (u.pathname.endsWith("/feed") && withTip) return J({ feed: [{ t: "user", v: "Hallo" }], screen: null, dialog: null, tip: tipNow });
       if (u.pathname.endsWith("/feed")) return J({ feed: [{ t: "user", v: "Hallo" }, { t: "user", v: "Schau Bild: /home/alex/bilder/herdr-app-2026-11-20T08-15-14-439Z.png und /tmp/ab/x.JPG an" }, { t: "text", v: "Antwort" }, { t: "text", v: "Bitte so:\n1. Anmelden:\n   ```\n   ! codex login --device-auth\n   ```\n2. Fertig. Und `inline` bleibt. Link: https://auth.openai.com/codex/device?x=1&y=2. Format `x-safari-https://a.b/c` und **https://fett.example/x** und \"https://q.example/z\".\n```\nzeile eins\nzeile <zwei>\n```" }, { t: "text", v: "Übersicht:\n| Name | Wert |\n|---|:-:|\n| eins | **fett** |\n| zwei <b> | 2 |\nEnde." }], screen: null, dialog: DIALOG });
       return J({ ok: true });
     },
@@ -54,6 +62,15 @@ class FakeWS {
 }
 
 let authRedirect = false;
+let withTip = false;
+let withAuth = false;
+let withPanel = false;
+let withHist = false;
+let manyCmds = false;
+let blockSend = false;
+let tipNow: any = null;
+let withCompact = false;
+const TIP = { tag: "Heads up", line: "Die Grenze verschiebt Stufe 2 auf Tag 9.", explanation: "**Kürzere Abwesenheit**\n* Bisher 6 Stunden.\n* Jetzt 2 Stunden.", options: [{ key: "1", label: "Understood" }, { key: "2", label: "Chat in main session" }, { key: "0", label: "Dismiss" }] };
 function ev2(w: any, file: any) {
   const ev = new w.Event("paste", { bubbles: true, cancelable: true });
   Object.defineProperty(ev, "clipboardData", { value: { files: [file], items: [{ kind: "file", type: "image/png", getAsFile: () => file }], getData: () => "" } });
@@ -249,7 +266,7 @@ test("Agents nach Projekt gruppieren: Umschalter, Projekt als Überschrift, Wahl
   btn.click();
   await new Promise(r => setTimeout(r, 20));
   const heads = [...d.querySelectorAll("#listBody .proj-h .pname")].map(e => e.textContent);
-  expect(heads).toEqual(["smarthome", "idlegame"]);
+  expect(heads.sort()).toEqual(["idlegame", "smarthome"]);
   expect(d.querySelectorAll("#listBody .card").length).toBe(2);
   // In der Gruppe steht das Projekt schon oben, nicht noch einmal auf der Karte
   expect(d.querySelectorAll("#listBody .card .proj").length).toBe(0);
@@ -276,15 +293,17 @@ test("Bild per Strg+V ins Eingabefeld: wird hochgeladen und als Pfad eingefügt"
   await new Promise(r => setTimeout(r, 100));
   expect(ev.defaultPrevented).toBe(true);
   expect(calls.some(c => c.p === "/api/agents/w1:p2/image")).toBe(true);
-  expect(ta.value).toBe("Schau mal [Bild 1]");
+  expect(ta.value).toBe("Schau mal [Bild 1] ");
   // Zweites Bild bekommt die nächste Nummer, beim Senden stehen die echten Pfade drin
   ta.dispatchEvent(ev2(w, file));
   await new Promise(r => setTimeout(r, 100));
-  expect(ta.value).toBe("Schau mal [Bild 1] [Bild 2]");
+  expect(ta.value).toBe("Schau mal [Bild 1] [Bild 2] ");
+  // Direkt dahinter getippter Text darf nicht am Pfad kleben
+  ta.value += "ist das ok?";
   calls.length = 0;
   (d.querySelector("[data-send]") as any).click();
   await new Promise(r => setTimeout(r, 50));
-  expect(calls.find(c => c.p === "/api/agents/w1:p2/prompt")!.body).toEqual({ text: "Schau mal /home/alex/Bilder/herdr-app-x.png /home/alex/Bilder/herdr-app-x.png" });
+  expect(calls.find(c => c.p === "/api/agents/w1:p2/prompt")!.body).toEqual({ text: "Schau mal /home/alex/Bilder/herdr-app-x.png /home/alex/Bilder/herdr-app-x.png ist das ok?" });
   await w.happyDOM.abort(); w.close();
 });
 
@@ -396,4 +415,386 @@ test("[Bild N] im Verlauf ist anklickbar und öffnet das Bild groß", async () =
   (d.querySelector("#sheetHost .lightbox") as any).click();
   expect(d.querySelector("#sheetHost .lightbox")).toBeNull();
   await w.happyDOM.abort(); w.close();
+});
+
+test("Tipp 'Im Chat besprechen': Text landet im Eingabefeld, nichts wird abgeschickt, Tipp gilt als verstanden", async () => {
+  withTip = true; tipNow = TIP;
+  try {
+    const w = await boot();
+    const d = w.document;
+    (d.querySelector('[data-agent="w1:p2"]') as any).click();
+    await new Promise(r => setTimeout(r, 100));
+    const ta = d.getElementById("msg") as any;
+    ta.value = "Meine Notiz";
+    calls.length = 0;
+    const b = [...d.querySelectorAll("[data-tipkey]")].find(x => x.textContent === "Im Chat besprechen") as any;
+    b.click();
+    await new Promise(r => setTimeout(r, 50));
+    expect(ta.value).toBe("Meine Notiz\n\nZu diesem Hinweis:\n\n> Heads up · Die Grenze verschiebt Stufe 2 auf Tag 9.\n>\n> **Kürzere Abwesenheit**\n> * Bisher 6 Stunden.\n> * Jetzt 2 Stunden.\n\n");
+    expect(calls.some(c => c.p.endsWith("/prompt"))).toBe(false);
+    expect(calls.filter(c => c.p.endsWith("/tip")).map(c => c.body)).toEqual([{ key: "1" }]);
+  } finally { withTip = false; }
+});
+
+test("Komprimierung erscheint als kurze Info, Zusammenfassung nur aufklappbar", async () => {
+  withCompact = true;
+  try {
+    const w = await boot();
+    const d = w.document;
+    (d.querySelector('[data-agent="w1:p2"]') as any).click();
+    await new Promise(r => setTimeout(r, 100));
+    const c = d.querySelector(".feed details.compact") as any;
+    expect(c).not.toBeNull();
+    expect(c.open).toBe(false);
+    expect(c.querySelector("summary")!.textContent).toContain("Unterhaltung automatisch komprimiert");
+    expect(c.querySelector(".msg-text strong")!.textContent).toBe("Ziel:");
+    expect([...d.querySelectorAll(".feed .msg-user")].map(e => e.textContent)).toEqual(["Vorher", "Weiter"]);
+  } finally { withCompact = false; }
+});
+
+test("Bild über den Foto-Knopf: Platzhalter sofort im Eingabefeld, Fokus dort, Cursor hinter Leerzeichen", async () => {
+  const w = await boot();
+  const d = w.document;
+  (d.querySelector('[data-agent="w1:p2"]') as any).click();
+  await new Promise(r => setTimeout(r, 100));
+  const ta = d.getElementById("msg") as any;
+  ta.value = ""; (d.body as any).focus?.();
+  const inp = d.getElementById("photoInput") as any;
+  const file = new (w as any).File([new Uint8Array([137, 80, 78, 71])], "image.png", { type: "image/png" });
+  Object.defineProperty(inp, "files", { value: [file], configurable: true });
+  inp.dispatchEvent(new (w as any).Event("change", { bubbles: true }));
+  // Noch vor dem Ende des Uploads: Platzhalter steht, Tastatur kann los
+  expect(ta.value).toBe("[Bild 1] ");
+  expect(d.activeElement).toBe(ta);
+  expect(ta.selectionStart).toBe(ta.value.length);
+  // Senden während des Uploads schickt keinen rohen Platzhalter
+  calls.length = 0;
+  ta.value += "schau";
+  (d.querySelector("[data-send]") as any).click();
+  await new Promise(r => setTimeout(r, 150));
+  const sent = calls.find(c => c.p === "/api/agents/w1:p2/prompt");
+  expect(sent ? sent.body.text : "").not.toContain("[Bild 1]");
+  await w.happyDOM.abort(); w.close();
+});
+
+test("Foto-Knopf fokussiert das Eingabefeld schon beim Antippen (iOS-Tastatur)", async () => {
+  const w = await boot();
+  const d = w.document;
+  (d.querySelector('[data-agent="w1:p2"]') as any).click();
+  await new Promise(r => setTimeout(r, 100));
+  const ta = d.getElementById("msg") as any;
+  let picked = false;
+  (d.getElementById("photoInput") as any).click = () => { picked = true; expect(d.activeElement).toBe(ta); };
+  (d.querySelector("[data-photo]") as any).click();
+  expect(picked).toBe(true);
+  await w.happyDOM.abort(); w.close();
+});
+
+test("Chat eines fertigen Agents öffnen: zählt als gesehen, Agent wird 'bereit'", async () => {
+  const a = STATE.agents[1] as any, old = a.status;
+  a.status = "done";
+  try {
+    const w = await boot();
+    const d = w.document;
+    const counts = () => d.getElementById("counts")!.textContent!.replace(/\s+/g, "");
+    expect(counts()).toContain("1fertig");
+    (d.querySelector('[data-agent="w1:p2"]') as any).click();
+    await new Promise(r => setTimeout(r, 100));
+    expect(counts()).toContain("0fertig");
+    expect(counts()).toContain("1bereit");
+    // Auf dem Server gespeichert, damit es auf allen Geräten gilt
+    expect(calls.filter(c => c.p === "/api/seen").map(c => c.body)).toEqual([{ ids: ["w1:p2"] }]);
+    await w.happyDOM.abort(); w.close();
+  } finally { a.status = old; }
+});
+
+test("Tipp ohne Chat-Option (erste Stufe): 'Im Chat besprechen' gibt es trotzdem, füllt das Feld und blendet den Tipp aus", async () => {
+  withTip = true;
+  tipNow = { tag: "Heads up", line: "Gesehen gilt nur pro Gerät.", explanation: "", options: [{ key: "1", label: "Learn more" }, { key: "2", label: "Knew this already" }, { key: "3", label: "Dismiss" }] };
+  try {
+    const w = await boot();
+    const d = w.document;
+    (d.querySelector('[data-agent="w1:p2"]') as any).click();
+    await new Promise(r => setTimeout(r, 100));
+    const ta = d.getElementById("msg") as any;
+    ta.value = "";
+    calls.length = 0;
+    const b = [...d.querySelectorAll(".tipcard button")].find(x => x.textContent === "Im Chat besprechen") as any;
+    expect(b).toBeTruthy();
+    b.click();
+    await new Promise(r => setTimeout(r, 50));
+    expect(ta.value).toBe("Zu diesem Hinweis:\n\n> Heads up · Gesehen gilt nur pro Gerät.\n\n");
+    expect(d.activeElement).toBe(ta);
+    expect(calls.some(c => c.p.endsWith("/prompt"))).toBe(false);
+    expect(calls.filter(c => c.p.endsWith("/tip")).map(c => c.body)).toEqual([{ key: "3" }]);
+  } finally { withTip = false; tipNow = null; }
+});
+
+test("Tipp mit Erklärung: kein Knopf 'Mehr erfahren', die Erklärung ist aufklappbar", async () => {
+  withTip = true;
+  tipNow = { tag: "Heads up", line: "Kurz.", explanation: "Lang erklärt.", options: [{ key: "1", label: "Learn more" }, { key: "2", label: "Knew this already" }, { key: "3", label: "Dismiss" }] };
+  try {
+    const w = await boot();
+    const d = w.document;
+    (d.querySelector('[data-agent="w1:p2"]') as any).click();
+    await new Promise(r => setTimeout(r, 100));
+    expect([...d.querySelectorAll(".tipcard button")].map(b => b.textContent)).toEqual(["Wusste ich schon", "Ausblenden", "Im Chat besprechen"]);
+    expect(d.querySelector(".tipcard details.tipx")).not.toBeNull();
+  } finally { withTip = false; tipNow = null; }
+});
+
+test("Nach Projekt: zuletzt aktives Projekt oben, egal welcher Status", async () => {
+  const [a1, a2] = STATE.agents as any[], o1 = a1.lastActive, o2 = a2.lastActive, s1 = a1.status;
+  a1.status = "idle"; a1.lastActive = Date.now(); a2.lastActive = Date.now() - 3600_000;
+  try {
+    let w = await boot(), d = w.document;
+    (d.querySelector('[data-group="project"]') as any).click();
+    await new Promise(r => setTimeout(r, 20));
+    expect([...d.querySelectorAll("#listBody .proj-h .pname")].map(e => e.textContent)).toEqual(["smarthome", "idlegame"]);
+    w.localStorage.removeItem("herdr:group");
+    await w.happyDOM.abort(); w.close();
+    a1.lastActive = Date.now() - 7200_000;
+    w = await boot(); d = w.document;
+    (d.querySelector('[data-group="project"]') as any).click();
+    await new Promise(r => setTimeout(r, 20));
+    expect([...d.querySelectorAll("#listBody .proj-h .pname")].map(e => e.textContent)).toEqual(["idlegame", "smarthome"]);
+    w.localStorage.removeItem("herdr:group");
+    await w.happyDOM.abort(); w.close();
+  } finally { a1.lastActive = o1; a2.lastActive = o2; a1.status = s1; }
+});
+
+test("Vom Server als gesehen gemeldeter Agent erscheint als 'bereit', ohne lokale Markierung", async () => {
+  const a = STATE.agents[1] as any, old = a.status;
+  a.status = "done"; a.seen = true;
+  try {
+    const w = await boot();
+    const d = w.document;
+    expect(d.getElementById("counts")!.textContent!.replace(/\s+/g, "")).toContain("0fertig");
+    await w.happyDOM.abort(); w.close();
+  } finally { a.status = old; delete a.seen; }
+});
+
+test("Ordner-Vertrauen erscheint als Karte mit deutschen Knöpfen, 'Ja' schickt Option 2", async () => {
+  const a = STATE.agents[0] as any, old = a.dialog;
+  a.dialog = { hash: "trust000000000000", kind: "trust", title: "", question: "Diesem Ordner vertrauen?", detail: "/home/alex/src/neu", options: ["No, exit", "Yes, I trust this folder"], descs: ["", ""], freeText: null, cursor: 1 };
+  try {
+    const w = await boot();
+    const d = w.document;
+    (d.querySelector('[data-agent="w1:p1"]') as any).click();
+    await new Promise(r => setTimeout(r, 100));
+    const card = d.querySelector(".feed .perm.trust") as any;
+    expect(card).not.toBeNull();
+    expect(card.textContent).toContain("/home/alex/src/neu");
+    const btns = [...card.querySelectorAll("button[data-opt]")] as any[];
+    expect(btns.map(b => b.textContent)).toEqual(["Ja, vertrauen", "Nein, beenden"]);
+    await new Promise(r => setTimeout(r, 750));
+    calls.length = 0;
+    btns[0].click();
+    await new Promise(r => setTimeout(r, 50));
+    expect(calls.find(c => c.p.endsWith("/answer"))!.body).toMatchObject({ hash: "trust000000000000", option: 2 });
+    await w.happyDOM.abort(); w.close();
+  } finally { a.dialog = old; }
+});
+
+test("Neu gestarteter Agent ohne Nachrichten steht nach Projekt oben (Startzeit zählt)", async () => {
+  const [a1, a2] = STATE.agents as any[], o1 = a1.lastActive, o2 = a2.lastActive, s2 = a2.since;
+  a1.lastActive = Date.now() - 60_000; a2.lastActive = null; a2.since = Date.now();
+  try {
+    const w = await boot(), d = w.document;
+    (d.querySelector('[data-group="project"]') as any).click();
+    await new Promise(r => setTimeout(r, 20));
+    expect([...d.querySelectorAll("#listBody .proj-h .pname")].map(e => e.textContent)).toEqual(["idlegame", "smarthome"]);
+    w.localStorage.removeItem("herdr:group");
+    await w.happyDOM.abort(); w.close();
+  } finally { a1.lastActive = o1; a2.lastActive = o2; a2.since = s2; }
+});
+
+test("MCP-Anmeldung: Karte mit Link, eingefügte Adresse geht an die Anmeldung, nicht in die Warteschlange", async () => {
+  withAuth = true;
+  try {
+    const w = await boot();
+    const d = w.document;
+    (d.querySelector('[data-agent="w1:p2"]') as any).click();
+    await new Promise(r => setTimeout(r, 100));
+    const card = d.querySelector(".feed .authcard") as any;
+    expect(card).not.toBeNull();
+    expect(card.textContent).toContain("higgsfield");
+    expect(card.querySelector("a").getAttribute("href")).toBe("https://example.ai/oauth?a=1&redirect_uri=http%3A%2F%2Flocalhost%3A5%2Fcallback");
+    const ta = d.getElementById("msg") as any;
+    ta.value = "http://localhost:5/callback?code=1";
+    calls.length = 0;
+    (d.querySelector("[data-send]") as any).click();
+    await new Promise(r => setTimeout(r, 50));
+    expect(calls.filter(c => c.p.endsWith("/auth")).map(c => c.body)).toEqual([{ text: "http://localhost:5/callback?code=1" }]);
+    expect(calls.some(c => c.p.endsWith("/prompt"))).toBe(false);
+    await w.happyDOM.abort(); w.close();
+  } finally { withAuth = false; }
+});
+
+test("Offenes Terminal-Menü (/mcp) erscheint im Chat, Knöpfe schicken Pfeil, Enter, Esc", async () => {
+  withPanel = true;
+  try {
+    const w = await boot();
+    const d = w.document;
+    (d.querySelector('[data-agent="w1:p2"]') as any).click();
+    await new Promise(r => setTimeout(r, 100));
+    const card = d.querySelector(".feed .panelcard") as any;
+    expect(card).not.toBeNull();
+    expect(card.querySelector("pre").textContent).toBe("Manage MCP servers\n❯ 1. higgsfield");
+    calls.length = 0;
+    for (const k of ["down", "enter", "esc"]) (card.querySelector('[data-pkey="' + k + '"]') as any).click();
+    await new Promise(r => setTimeout(r, 50));
+    expect(calls.filter(c => c.p === "/api/panes/w1:p2/keys").map(c => c.body.keys)).toEqual([["down"], ["enter"], ["esc"]]);
+    await w.happyDOM.abort(); w.close();
+  } finally { withPanel = false; }
+});
+
+const key = (w: any, el: any, k: string, o: any = {}) => { const ev = new w.KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...o }); el.dispatchEvent(ev); return ev; };
+
+test("Enter schickt ab, Shift+Enter macht eine neue Zeile", async () => {
+  const w = await boot();
+  const d = w.document;
+  (d.querySelector('[data-agent="w1:p2"]') as any).click();
+  await new Promise(r => setTimeout(r, 100));
+  const ta = d.getElementById("msg") as any;
+  ta.value = "Hallo";
+  calls.length = 0;
+  const se = key(w, ta, "Enter", { shiftKey: true });
+  expect(se.defaultPrevented).toBe(false);
+  await new Promise(r => setTimeout(r, 30));
+  expect(calls.some(c => c.p.endsWith("/prompt"))).toBe(false);
+  const ev = key(w, ta, "Enter");
+  expect(ev.defaultPrevented).toBe(true);
+  await new Promise(r => setTimeout(r, 50));
+  expect(calls.find(c => c.p.endsWith("/prompt"))!.body).toEqual({ text: "Hallo" });
+  await w.happyDOM.abort(); w.close();
+});
+
+test("Pfeiltasten im leeren Feld holen frühere eigene Nachrichten, eigener Text wird nie überschrieben", async () => {
+  withHist = true;
+  try {
+    const w = await boot();
+    const d = w.document;
+    (d.querySelector('[data-agent="w1:p2"]') as any).click();
+    await new Promise(r => setTimeout(r, 100));
+    const ta = d.getElementById("msg") as any;
+    ta.value = "";
+    expect(key(w, ta, "ArrowUp").defaultPrevented).toBe(true);
+    expect(ta.value).toBe("dritte");
+    key(w, ta, "ArrowUp"); expect(ta.value).toBe("zweite\nmit Zeile");
+    key(w, ta, "ArrowUp"); expect(ta.value).toBe("erste");
+    key(w, ta, "ArrowUp"); expect(ta.value).toBe("erste");
+    key(w, ta, "ArrowDown"); expect(ta.value).toBe("zweite\nmit Zeile");
+    key(w, ta, "ArrowDown"); key(w, ta, "ArrowDown"); expect(ta.value).toBe("");
+    // Eigener Text: Pfeil bleibt normale Cursorbewegung
+    ta.value = "mein Text";
+    expect(key(w, ta, "ArrowUp").defaultPrevented).toBe(false);
+    expect(ta.value).toBe("mein Text");
+    // Geholte Nachricht bearbeitet: dann auch nicht mehr blättern
+    ta.value = ""; key(w, ta, "ArrowUp"); ta.value += " geändert";
+    expect(key(w, ta, "ArrowUp").defaultPrevented).toBe(false);
+    expect(ta.value).toBe("dritte geändert");
+    await w.happyDOM.abort(); w.close();
+  } finally { withHist = false; }
+});
+
+test("Offenes Terminal-Menü: Pfeile, Enter und Esc der Tastatur gehen ans Menü, solange das Feld leer ist", async () => {
+  withPanel = true;
+  try {
+    const w = await boot();
+    const d = w.document;
+    (d.querySelector('[data-agent="w1:p2"]') as any).click();
+    await new Promise(r => setTimeout(r, 100));
+    const ta = d.getElementById("msg") as any;
+    ta.value = "";
+    calls.length = 0;
+    for (const k of ["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft", "Enter", "Escape"]) expect(key(w, ta, k).defaultPrevented).toBe(true);
+    await new Promise(r => setTimeout(r, 50));
+    expect(calls.filter(c => c.p === "/api/panes/w1:p2/keys").map(c => c.body.keys)).toEqual([["down"], ["up"], ["right"], ["left"], ["enter"], ["esc"]]);
+    expect(calls.some(c => c.p.endsWith("/prompt"))).toBe(false);
+    expect(ta.value).toBe("");
+    await w.happyDOM.abort(); w.close();
+  } finally { withPanel = false; }
+});
+
+test("Autovervollständigung bei '/': Vorschläge, Pfeile wählen, Tab/Enter übernimmt, Esc schließt", async () => {
+  const w = await boot();
+  const d = w.document;
+  (d.querySelector('[data-agent="w1:p2"]') as any).click();
+  await new Promise(r => setTimeout(r, 100));
+  const ta = d.getElementById("msg") as any;
+  const typeIn = async (v: string) => { ta.value = v; ta.dispatchEvent(new (w as any).Event("input", { bubbles: true })); await new Promise(r => setTimeout(r, 60)); };
+  const names = () => [...d.querySelectorAll(".slash [data-slash]")].map((e: any) => e.dataset.slash);
+  await typeIn("/c");
+  expect(names()).toEqual(["clear", "compact", "commit-commands:commit", "mcp"]);
+  await typeIn("/com");
+  expect(names()).toEqual(["compact", "commit-commands:commit"]);
+  key(w, ta, "ArrowDown");
+  expect((d.querySelector(".slash .on") as any).dataset.slash).toBe("commit-commands:commit");
+  calls.length = 0;
+  expect(key(w, ta, "Enter").defaultPrevented).toBe(true);
+  expect(ta.value).toBe("/commit-commands:commit ");
+  expect(calls.some(c => c.p.endsWith("/prompt"))).toBe(false);
+  expect(d.querySelector(".slash")).toBeNull();
+  // Teil mitten im Namen passt auch, Klick übernimmt
+  await typeIn("/mc");
+  (d.querySelector('.slash [data-slash="mcp"]') as any).click();
+  expect(ta.value).toBe("/mcp ");
+  // Esc schließt, normaler Text zeigt nichts
+  await typeIn("/cl");
+  key(w, ta, "Escape");
+  expect(d.querySelector(".slash")).toBeNull();
+  await typeIn("hallo /c");
+  expect(d.querySelector(".slash")).toBeNull();
+  await w.happyDOM.abort(); w.close();
+});
+
+test("Autovervollständigung: vollständig getippter Befehl bleibt sichtbar, Enter schickt ihn dann direkt ab", async () => {
+  const w = await boot();
+  const d = w.document;
+  (d.querySelector('[data-agent="w1:p2"]') as any).click();
+  await new Promise(r => setTimeout(r, 100));
+  const ta = d.getElementById("msg") as any;
+  ta.value = "/mcp"; ta.dispatchEvent(new (w as any).Event("input", { bubbles: true }));
+  await new Promise(r => setTimeout(r, 60));
+  expect([...d.querySelectorAll(".slash [data-slash]")].map((e: any) => e.dataset.slash)).toEqual(["mcp"]);
+  calls.length = 0;
+  key(w, ta, "Enter");
+  await new Promise(r => setTimeout(r, 50));
+  expect(calls.find(c => c.p.endsWith("/prompt"))!.body).toEqual({ text: "/mcp" });
+  expect(d.querySelector(".slash")).toBeNull();
+  await w.happyDOM.abort(); w.close();
+});
+
+test("Autovervollständigung: nur '/' zeigt alle Befehle", async () => {
+  manyCmds = true;
+  const w = await boot();
+  const d = w.document;
+  (d.querySelector('[data-agent="w1:p2"]') as any).click();
+  await new Promise(r => setTimeout(r, 100));
+  const ta = d.getElementById("msg") as any;
+  ta.value = "/"; ta.dispatchEvent(new (w as any).Event("input", { bubbles: true }));
+  await new Promise(r => setTimeout(r, 60));
+  expect([...d.querySelectorAll(".slash [data-slash]")].length).toBe(20);
+  manyCmds = false;
+  await w.happyDOM.abort(); w.close();
+});
+
+test("Senden, während im Terminal etwas blockt: Hinweis erscheint lange genug, Text bleibt im Feld", async () => {
+  blockSend = true;
+  try {
+    const w = await boot();
+    const d = w.document;
+    (d.querySelector('[data-agent="w1:p2"]') as any).click();
+    await new Promise(r => setTimeout(r, 100));
+    const ta = d.getElementById("msg") as any;
+    ta.value = "Wichtige Nachricht";
+    key(w, ta, "Enter");
+    await new Promise(r => setTimeout(r, 2600));
+    const t = d.getElementById("toast") as any;
+    expect(t.textContent).toContain("Menü offen");
+    expect(t.classList.contains("show")).toBe(true);
+    expect(ta.value).toBe("Wichtige Nachricht");
+    await w.happyDOM.abort(); w.close();
+  } finally { blockSend = false; }
 });

@@ -70,3 +70,54 @@ test("Bestätigungsseite nach mehreren Teilfragen (ohne Fußzeile): Absenden ode
 test("nummerierte Liste ohne Fußzeile im normalen Verlauf ist kein Dialog", () => {
   expect(parseDialog("● Plan:\n  1. Erst das\n  2. Dann das\n\n───────────────\n❯ \n───────────────")).toBeNull();
 });
+
+test("Ordner-Vertrauen: Optionen ohne Nummern werden erkannt, Cursor steht auf der ersten", async () => {
+  const s = await Bun.file(import.meta.dir + "/fixtures/screens/screen-trust.txt").text();
+  const d = parseDialog(s)!;
+  expect(d).not.toBeNull();
+  expect(d.kind).toBe("trust");
+  expect(d.options).toEqual(["No, exit", "Yes, I trust this folder"]);
+  expect(d.detail).toBe("/home/alex/src/neu");
+  expect(d.cursor).toBe(1);
+  expect(denyOption(d)).toBe(1);
+  // Cursor auf der zweiten Option
+  expect(parseDialog(s.replace("❯ No, exit", "  No, exit").replace("   Yes, I trust", " ❯ Yes, I trust"))!.cursor).toBe(2);
+});
+
+test("MCP-Anmeldung: Server, zusammengesetzte URL, Einfügen möglich", async () => {
+  const { parseAuth } = await import("../server/prompt.ts");
+  const s = await read("screen-mcp-auth.txt");
+  expect(parseAuth(s)).toEqual({
+    server: "higgsfield",
+    url: "https://example.ai/oauth/authorize?response_type=code&client_id=https%3A%2F%2Fclaude.ai%2Foauth%2Fclaude-code-client-metadata&code_challenge=abc&redirect_uri=http%3A%2F%2Flocalhost%3A53561%2Fcallback&state=xyz&scope=openid+email+offline_access&prompt=consent",
+    paste: true,
+  });
+  expect(parseAuth("❯ hi\n● Hallo")).toBeNull();
+  expect(parseDialog(s)).toBeNull();
+});
+
+test("Offenes Terminal-Menü (z. B. /mcp): Block über der Fußzeile, ohne Rahmenzeichen", async () => {
+  const { parsePanel } = await import("../server/prompt.ts");
+  expect(parsePanel(await read("screen-mcp-menu.txt"))).toEqual({
+    text: "Manage MCP servers\n2 servers\n\n❯ 1. higgsfield                 △ needs authentication\n  2. obsidian                   ✔ connected\n\n※ Tip: Run claude --debug to see logs",
+    footer: "↑↓ to navigate · Enter to confirm · Esc to cancel",
+  });
+  // Normales Eingabefeld ist kein Menü
+  expect(parsePanel(await read("screen-idle.txt"))).toBeNull();
+  expect(parsePanel(await read("screen-tip.txt"))).toBeNull();
+});
+
+test("Vollbild-Anzeige ohne Fußzeile (z. B. /usage): erkannt, weil das Eingabefeld fehlt", async () => {
+  const { parsePanel } = await import("../server/prompt.ts");
+  const p = parsePanel(await read("screen-usage.txt"), true)!;
+  expect(p).not.toBeNull();
+  expect(p.text.split("\n")[0]).toBe("Settings  Status   Config   Usage   Stats");
+  expect(p.text).toContain("Current week (all models)");
+  expect(p.text).not.toContain("❯ /clear");
+  // Ohne Claude-Kennzeichen (andere Agents) keine Vermutung
+  expect(parsePanel(await read("screen-usage.txt"))).toBeNull();
+  // Normales Eingabefeld, auch mit Tipp darüber: kein Menü
+  expect(parsePanel(await read("screen-idle.txt"), true)).toBeNull();
+  expect(parsePanel(await read("screen-tip.txt"), true)).toBeNull();
+  expect(parsePanel(await read("screen-tip-explained.txt"), true)).toBeNull();
+});
