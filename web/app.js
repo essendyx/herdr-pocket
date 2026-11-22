@@ -660,7 +660,7 @@
   const isListTab = t => t === "agents" || t === "spaces";
   function markTabs() {
     document.querySelectorAll(".tabbar [data-tab]").forEach(b => { b.removeAttribute("aria-current"); if (b.dataset.tab === state.tab) b.setAttribute("aria-current", "page"); });
-    document.querySelectorAll("#listSeg [data-tab]").forEach(b => b.setAttribute("aria-pressed", b.dataset.tab === state.list));
+    document.querySelectorAll("#listSeg [data-tab]").forEach(b => b.setAttribute("aria-pressed", b.dataset.tab === (state.tab === "browser" ? "browser" : state.list)));
   }
   function setTab(t) {
     if (isListTab(t)) {

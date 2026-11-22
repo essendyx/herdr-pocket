@@ -956,3 +956,20 @@ test("Server schaltet den Browser ab: Tab wird verlassen", async () => {
   expect(d.querySelector("#browserFrame iframe")).toBeNull();
   await w.happyDOM.abort(); w.close();
 });
+
+test("Desktop: Browser steht beschriftet neben Agents und Spaces und ist dort ausgewählt", async () => {
+  const w = await boot();
+  const d = w.document;
+  const seg = () => d.querySelector('#listSeg [data-tab="browser"]') as any;
+  expect(seg().hidden).toBe(true);
+  FakeWS.last!.push({ type: "state", data: withBrowser(true) });
+  await new Promise(r => setTimeout(r, 20));
+  expect(seg().hidden).toBe(false);
+  expect(seg().textContent).toBe("Browser");
+  seg().click();
+  await new Promise(r => setTimeout(r, 20));
+  expect(seg().getAttribute("aria-pressed")).toBe("true");
+  expect((d.querySelector('#listSeg [data-tab="agents"]') as any).getAttribute("aria-pressed")).toBe("false");
+  expect(d.querySelector("#browserFrame iframe")).not.toBeNull();
+  await w.happyDOM.abort(); w.close();
+});
