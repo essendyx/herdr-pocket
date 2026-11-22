@@ -22,6 +22,7 @@ import { parseAuth, parsePanel, parseSpinner } from "./prompt.ts";
 import { listCommands, type Cmd } from "./commands.ts";
 import { STATE_DIR, ensureDir, readJson, writeJson, DEFAULT_SETTINGS, type Settings } from "./store.ts";
 import { call } from "./herdr.ts";
+import { browserHealth, subPath, proxyHttp, isUpgrade, protocolsOf, targetUrl, openBridge, type Bridge } from "./browser.ts";
 import { PushHub, setupVapid, shouldNotify, pushPayload } from "./push.ts";
 import type { Agent, Status } from "./model.ts";
 
@@ -34,6 +35,7 @@ try { CFG = loadConfig(process.env, homedir(), DEV); }
 catch (e) { if (e instanceof ConfigError) { console.error("Konfiguration: " + e.message); process.exit(1); } throw e; }
 const ORIGIN = CFG.origin;
 const IMG_DIR = CFG.imageDir;
+const BROWSER = CFG.browser;
 const MAX_IMG = 25 * 1024 * 1024;
 
 ensureDir();
@@ -88,9 +90,9 @@ async function stateJson() {
     // Token-Verbrauch der Sitzung samt Subagents; liest nur, was seit dem letzten Mal dazugekommen ist
     const tp = a.sessionId && mtimeOf(a) ? transcriptPath(a.cwd, a.sessionId) : "";
     const usage = tp ? await sessionUsage(tp, tp.replace(/\.jsonl$/, "") + "/subagents").catch(() => null) : null;
-    return { ...a, usage, pinned: isPinned(pins, a), seen: isSeen(seen, { ...a, lastActive }), dialog, tip, lastActive, ctx: i?.ctx ?? 0, model: i?.model ?? null, effort: i?.effort ?? null, mode: i?.mode ?? null, plan: i?.plan ?? [], subs: i?.subs ?? 0, queue: queue.list(a.id), hasHistory: !!i };
+    return { ...a, usage, pinned: isPinned(pins, a), seen: isSeen(seen, { ...a, lastActive }), dialog, tip, lastActive, browserAt: i?.browserAt ?? 0, ctx: i?.ctx ?? 0, model: i?.model ?? null, effort: i?.effort ?? null, mode: i?.mode ?? null, plan: i?.plan ?? [], subs: i?.subs ?? 0, queue: queue.list(a.id), hasHistory: !!i };
   }));
-  return { ...s, agents, usage: usageView(readJson("usage.json", null)) };
+  return { ...s, agents, browser: !!BROWSER, usage: usageView(readJson("usage.json", null)) };
 }
 
 // WebSocket-Verteilung
@@ -362,7 +364,24 @@ export const server = Bun.serve({
   async fetch(req, srv) {
     const url = new URL(req.url);
     if (url.pathname === "/api/health") return json({ ok: true, herdr: poller.snapshot.ok });
+    if (url.pathname === "/api/health/browser") {
+      if (!BROWSER) return fail(404, "Browser nicht eingerichtet");
+      const up = await browserHealth(BROWSER);
+      return json({ ok: up }, up ? 200 : 503);
+    }
     if (verify && !(await verify(req))) return fail(401, "Nicht angemeldet");
+    // Browser-Ansicht: eigene Oberfläche, deshalb ohne X-Herdr-App, aber nur vom eigenen Origin (Schreiben und WebSocket)
+    if (subPath(url.pathname) !== null) {
+      if (!BROWSER) return fail(404, "Nicht gefunden");
+      const write = req.method !== "GET" && req.method !== "HEAD";
+      if ((write || isUpgrade(req)) && ORIGIN && req.headers.get("origin") !== ORIGIN) return fail(403, "Anfrage abgelehnt");
+      if (isUpgrade(req)) {
+        const protocols = protocolsOf(req);
+        const ok = srv.upgrade(req, { data: { browser: targetUrl(BROWSER, url, true), protocols }, headers: protocols.length ? { "Sec-WebSocket-Protocol": protocols[0] } : undefined });
+        return ok ? undefined as any : fail(400, "WebSocket erwartet");
+      }
+      return proxyHttp(req, url, BROWSER);
+    }
     if (!checkCsrf(req, ORIGIN)) return fail(403, "Anfrage abgelehnt");
     if (url.pathname === "/ws" && ORIGIN && req.headers.get("origin") !== ORIGIN) return fail(403, "Anfrage abgelehnt");
     if (url.pathname === "/ws") return srv.upgrade(req) ? undefined as any : fail(400, "WebSocket erwartet");
@@ -376,12 +395,13 @@ export const server = Bun.serve({
     }
   },
   websocket: {
-    async open(ws) {
+    async open(ws: any) {
+      if (ws.data?.browser) { ws.data.bridge = openBridge(ws.data.browser, ORIGIN, ws.data.protocols || [], ws); return; }
       clients.add(ws);
       try { ws.send(JSON.stringify({ type: "state", data: await stateJson() })); } catch (e) { console.error("WebSocket:", e); }
     },
-    close(ws) { clients.delete(ws); },
-    message() {},
+    close(ws: any, code: number, reason: string) { if (ws.data?.bridge) (ws.data.bridge as Bridge).close(code, reason); else clients.delete(ws); },
+    message(ws: any, m) { if (ws.data?.bridge) (ws.data.bridge as Bridge).send(m as any); },
   },
 });
 

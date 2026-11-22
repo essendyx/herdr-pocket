@@ -33,6 +33,7 @@ beforeAll(() => {
       if (u.pathname.endsWith("/image")) { calls.push({ m: req.method, p: decodeURIComponent(u.pathname), body: null }); return J({ path: "/home/alex/Bilder/herdr-app-x.png" }); }
       if (u.pathname === "/api/activity") return J({ entries: [] });
       if (u.pathname === "/api/settings") return J({ notify: { blocked: true, done: true, working: false }, quiet: true });
+      if (u.pathname.endsWith("/feed") && withBrowserFeed) return J({ feed: [{ t: "user", v: "Such was" }, { t: "tool", k: "mcp__claude-in-chrome__navigate", a: "https://example.org", s: "ok" }, { t: "tool", k: "Bash", a: "ls", s: "ok" }], screen: null, dialog: null, tip: null, auth: null, panel: null, spinner: null, pending: [] });
       if (u.pathname.endsWith("/feed") && withCompact) return J({ feed: [{ t: "user", v: "Vorher" }, { t: "compact", trigger: "auto", v: "Summary:\n1. **Ziel:** App bauen" }, { t: "user", v: "Weiter" }], screen: null, dialog: null });
       if (u.pathname.endsWith("/prompt") && blockSend) { calls.push({ m: req.method, p: decodeURIComponent(u.pathname), body: await req.json().catch(() => null) }); return new Response(JSON.stringify({ error: "Im Terminal ist ein Menü offen. Erst bedienen oder mit Esc schließen, dann senden." }), { status: 409, headers: { "content-type": "application/json" } }); }
       if (u.pathname.endsWith("/commands") && manyCmds) return J({ commands: Array.from({ length: 20 }, (_, i) => ({ name: "cmd" + i, desc: "" })) });
@@ -72,6 +73,7 @@ let manyCmds = false;
 let blockSend = false;
 let tipNow: any = null;
 let withCompact = false;
+let withBrowserFeed = false;
 const TIP = { tag: "Heads up", line: "Die Grenze verschiebt Stufe 2 auf Tag 9.", explanation: "**Kürzere Abwesenheit**\n* Bisher 6 Stunden.\n* Jetzt 2 Stunden.", options: [{ key: "1", label: "Understood" }, { key: "2", label: "Chat in main session" }, { key: "0", label: "Dismiss" }] };
 function ev2(w: any, file: any) {
   const ev = new w.Event("paste", { bubbles: true, cancelable: true });
@@ -862,4 +864,95 @@ test("Frage mit Teilfragen: Fortschritt und Reiter statt roher Reiterzeile, Frag
     expect(card.textContent).not.toContain("Submit");
     await w.happyDOM.abort(); w.close();
   } finally { a.dialog = old; }
+});
+
+// Browser-Tab (Selkies unter /browser/)
+const withBrowser = (on: boolean, browserAt = Date.now()) => ({ ...STATE, browser: on, agents: STATE.agents.map(a => a.id === "w1:p2" ? { ...a, browserAt } : a) });
+
+test("Browser-Tab erscheint nur, wenn der Server ihn anbietet", async () => {
+  const w = await boot();
+  const d = w.document;
+  const tab = () => d.querySelector('.tabbar [data-tab="browser"]') as any;
+  expect(tab().hidden).toBe(true);
+  expect(d.querySelector(".tabbar")!.classList.contains("five")).toBe(false);
+  FakeWS.last!.push({ type: "state", data: withBrowser(true) });
+  await new Promise(r => setTimeout(r, 20));
+  expect(tab().hidden).toBe(false);
+  expect(d.querySelector(".tabbar")!.classList.contains("five")).toBe(true);
+  await w.happyDOM.abort(); w.close();
+});
+
+test("Browser-Tab bettet /browser/ ein, Verlassen entfernt den Rahmen", async () => {
+  const w = await boot();
+  const d = w.document;
+  FakeWS.last!.push({ type: "state", data: withBrowser(true) });
+  await new Promise(r => setTimeout(r, 20));
+  (d.querySelector('.tabbar [data-tab="browser"]') as any).click();
+  await new Promise(r => setTimeout(r, 20));
+  const f = d.querySelector("#browserFrame iframe") as any;
+  expect(f).not.toBeNull();
+  expect(f.getAttribute("src")).toBe("/browser/");
+  expect(d.getElementById("app")!.dataset.tab).toBe("browser");
+  expect(w.location.hash).toBe("#browser");
+  // Neuer Zustand zeichnet neu, der Rahmen bleibt derselbe (Stream läuft weiter)
+  FakeWS.last!.push({ type: "state", data: withBrowser(true) });
+  await new Promise(r => setTimeout(r, 20));
+  expect(d.querySelector("#browserFrame iframe")).toBe(f);
+  expect(d.getElementById("browserHead")!.textContent).toContain("idlegame");
+  (d.querySelector('.tabbar [data-tab="agents"]') as any).click();
+  await new Promise(r => setTimeout(r, 20));
+  expect(d.querySelector("#browserFrame iframe")).toBeNull();
+  await w.happyDOM.abort(); w.close();
+});
+
+test("Agent im Browser: Kennzeichen auf der Karte, Tippen öffnet den Browser", async () => {
+  const w = await boot();
+  const d = w.document;
+  FakeWS.last!.push({ type: "state", data: withBrowser(true) });
+  await new Promise(r => setTimeout(r, 20));
+  const card = d.querySelector('[data-agent="w1:p2"]')!;
+  expect(card.querySelector(".bmark")).not.toBeNull();
+  expect(d.querySelector('[data-agent="w1:p1"] .bmark')).toBeNull();
+  (card.querySelector(".bmark") as any).click();
+  await new Promise(r => setTimeout(r, 20));
+  expect(d.getElementById("app")!.dataset.tab).toBe("browser");
+  // Länger als 3 Minuten her: kein Kennzeichen mehr
+  FakeWS.last!.push({ type: "state", data: withBrowser(true, Date.now() - 4 * 60 * 1000) });
+  await new Promise(r => setTimeout(r, 20));
+  expect(d.querySelector('[data-agent="w1:p2"] .bmark')).toBeNull();
+  expect(d.getElementById("browserHead")!.textContent).toContain("kein Agent");
+  await w.happyDOM.abort(); w.close();
+});
+
+test("Browser-Schritte im Chat: eigene Zeile mit Live-Knopf", async () => {
+  withBrowserFeed = true;
+  const w = await boot();
+  const d = w.document;
+  FakeWS.last!.push({ type: "state", data: withBrowser(true) });
+  await new Promise(r => setTimeout(r, 20));
+  (d.querySelector('[data-agent="w1:p2"]') as any).click();
+  await new Promise(r => setTimeout(r, 100));
+  const bt = d.querySelector(".feed .btool")!;
+  expect(bt.textContent).toContain("Öffnet");
+  expect(bt.textContent).toContain("https://example.org");
+  expect(d.querySelector(".thinking [data-open-browser]")).not.toBeNull();
+  (bt.querySelector("[data-open-browser]") as any).click();
+  await new Promise(r => setTimeout(r, 20));
+  expect(d.getElementById("app")!.dataset.tab).toBe("browser");
+  withBrowserFeed = false;
+  await w.happyDOM.abort(); w.close();
+});
+
+test("Server schaltet den Browser ab: Tab wird verlassen", async () => {
+  const w = await boot();
+  const d = w.document;
+  FakeWS.last!.push({ type: "state", data: withBrowser(true) });
+  await new Promise(r => setTimeout(r, 20));
+  (d.querySelector('.tabbar [data-tab="browser"]') as any).click();
+  await new Promise(r => setTimeout(r, 20));
+  FakeWS.last!.push({ type: "state", data: withBrowser(false) });
+  await new Promise(r => setTimeout(r, 20));
+  expect(d.getElementById("app")!.dataset.tab).toBe("agents");
+  expect(d.querySelector("#browserFrame iframe")).toBeNull();
+  await w.happyDOM.abort(); w.close();
 });

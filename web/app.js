@@ -82,6 +82,7 @@
   // Kleines ✕ im Eingabefeld: leert den noch nicht gesendeten Text
   const CLEARX = '<button type="button" class="clearmsg" data-clear-msg title="Eingabe leeren" aria-label="Eingabe leeren" hidden>✕</button>';
   const SEND = '<button type="button" class="round send" data-send title="Senden"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>';
+  const GLOBE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>';
   const TERM_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 9 3 3-3 3M13 15h4"/></svg>';
   const countText = (a, sh) => (a ? a + (a === 1 ? " Agent" : " Agents") : "keine Agents") + (sh ? " · " + sh + (sh === 1 ? " Shell" : " Shells") : "");
   const modelName = id => { if (!id) return "unbekannt"; const m = MODELS.find(x => id.includes(x.v)); return m ? m.n : id.replace(/^claude-/, ""); };
@@ -90,6 +91,13 @@
   const KIND_NAME = { claude: "Claude", codex: "Codex", opencode: "Lokale KI" };
   const KIND_LONG = { codex: "Codex · ChatGPT-Abo", opencode: "Lokale KI · Qwen 3.5 9B" };
   const isClaude = a => !a.kind || a.kind === "claude";
+  // Agent arbeitet und hat in den letzten 3 Minuten den Browser bedient (Claude in Chrome)
+  const BROWSER_WINDOW = 3 * 60 * 1000;
+  const usesBrowser = a => !!(a && a.status === "working" && a.browserAt && Date.now() - a.browserAt < BROWSER_WINDOW);
+  const BROWSER_TOOL = "mcp__claude-in-chrome__";
+  const BROWSER_VERB = { navigate: "Öffnet", computer: "Bedient", browser_batch: "Mehrere Schritte", find: "Sucht", form_input: "Füllt aus", read_page: "Liest Seite", get_page_text: "Liest Text",
+    javascript_tool: "Skript", tabs_create_mcp: "Neuer Tab", tabs_close_mcp: "Schließt Tab", tabs_context_mcp: "Tabs", read_console_messages: "Konsole", read_network_requests: "Netzwerk",
+    gif_creator: "Aufnahme", upload_image: "Lädt hoch", file_upload: "Lädt hoch", resize_window: "Fenstergröße", list_connected_browsers: "Browserwahl", select_browser: "Browserwahl", switch_browser: "Browserwahl" };
   const home = p => String(p || "").replace(/^\/home\/[^/]+/, "~");
 
   // Zustand
@@ -152,6 +160,7 @@
       '<span class="meta">' + esc(wsLabel(a.ws)) + '</span>' +
       (isClaude(a) ? '<span class="cfgmini" title="Modell, Modus und Effort">' + esc(modelName(a.model).split(" ")[0]) + ' · ' + esc((MODE[a.mode] || MODE.default).s.split(" ")[0]) + ' · ' + esc(EFF[a.effort] || a.effort || "?") + '</span>'
         : '<span class="cfgmini kind-' + esc(a.kind) + '">' + esc(KIND_NAME[a.kind] || a.kind) + '</span>') +
+      (usesBrowser(a) && S.browser ? '<span class="bmark" data-open-browser title="Browser live ansehen">' + GLOBE_SVG + 'Browser</span>' : "") +
       ask + '</button>';
   }
 
@@ -298,6 +307,11 @@
     if (x.t === "user") return '<div class="msg-user">' + imgHTML(x.v) + '</div>';
     if (x.t === "text") return '<div class="msg-text">' + mdText(x.v) + '</div>';
     if (x.t === "compact") return '<details class="compact"><summary><span>Unterhaltung ' + (x.trigger === "manual" ? "komprimiert" : "automatisch komprimiert") + '</span><small>Zusammenfassung</small></summary><div class="msg-text">' + mdText(x.v || "") + '</div></details>';
+    if (x.t === "tool" && x.k.startsWith(BROWSER_TOOL)) {
+      const tk = x.k.slice(BROWSER_TOOL.length);
+      return '<div class="tool btool"><span class="k">' + GLOBE_SVG + esc(BROWSER_VERB[tk] || tk) + '</span><code>' + esc(x.a) + '</code>' + (x.s === "ok" ? '<span class="ok">✓</span>' : x.s === "err" ? '<span class="err">Fehler</span>' : '<span class="run">läuft</span>') +
+        (S.browser ? '<button type="button" class="blive" data-open-browser title="Browser live ansehen">Live</button>' : "") + '</div>';
+    }
     if (x.t === "tool") return '<div class="tool"><span class="k">' + esc(x.k) + '</span><code>' + esc(x.a) + '</code>' + (x.s === "ok" ? '<span class="ok">✓</span>' : x.s === "err" ? '<span class="err">Fehler</span>' : '<span class="run">läuft</span>') + '</div>';
     if (x.t === "diff") return diffHTML(x, false);
     return "";
@@ -365,7 +379,8 @@
     if (sp && sp.tokens) bits.push(esc(sp.tokens.replace(".", ",")) + " Tokens");
     if (sp && sp.note) bits.push(sp.note === "thinking" ? "denkt nach" : esc(sp.note.replace(/^thought for (\d+)s$/, "hat $1 s nachgedacht")));
     return '<div class="thinking"><i></i><i></i><i></i><span>Arbeitet seit <span class="dur" data-start="' + start + '">' + fmtDur((Date.now() - start) / 1000) + '</span></span>' +
-      (bits.length ? '<small>' + bits.join(" · ") + '</small>' : "") + '</div>';
+      (bits.length ? '<small>' + bits.join(" · ") + '</small>' : "") +
+      (usesBrowser(a) && S.browser ? '<button type="button" class="btn blivebtn" data-open-browser>' + GLOBE_SVG + 'Browser live ansehen</button>' : "") + '</div>';
   }
   function feedHTML(a) {
     const F = feeds[a.id];
@@ -438,6 +453,7 @@
 
   function renderMain() {
     const m = $("#p-main");
+    if (state.tab === "browser") return;
     if (state.tab === "activity") { m.innerHTML = activityPane(); return; }
     if (state.tab === "settings") { m.innerHTML = settingsPane(); refreshPushStatus(); return; }
     if (state.shell) {
@@ -654,10 +670,12 @@
       app.dataset.mview = isDesk() ? "main" : "list";
       $("#listScroll").scrollTop = 0;
     } else {
+      if (t === "browser" && !S.browser) return;
       state.tab = t;
       app.dataset.mview = "main";
       if (t === "activity") loadActivity();
     }
+    try { if (t === "browser") history.replaceState(null, "", "#browser"); else if (location.hash === "#browser") history.replaceState(null, "", "#"); } catch (_) {}
     markTabs(); renderAll();
   }
   function openAgent(id) {
@@ -730,7 +748,31 @@
     if (a && a.status === "done" && !a.seen && seenDone[a.id] !== a.since) { seenDone[a.id] = a.since; store.set("seenDone", seenDone); postSeen([a.id]); }
   }
   function postSeen(ids) { if (ids.length) API.post("/api/seen", { ids }).catch(() => {}); }
-  function renderAll() { markSeen(); renderConn(); renderList(); renderMain(); renderSide(); }
+  // Browser-Ansicht: der Rahmen entsteht beim Öffnen des Tabs und verschwindet beim Verlassen (Stream aus), Kopfzeile bei jedem Zeichnen
+  function renderBrowser() {
+    const on = state.tab === "browser" && !!S.browser;
+    app.dataset.tab = state.tab;
+    document.querySelectorAll("[data-browser-only]").forEach(b => { b.hidden = !S.browser; });
+    $(".tabbar").classList.toggle("five", !!S.browser);
+    const fr = $("#browserFrame");
+    if (!on) { if (fr.firstChild) fr.innerHTML = ""; return; }
+    if (!fr.querySelector("iframe")) {
+      const f = document.createElement("iframe");
+      f.src = "/browser/";
+      f.title = "Browser";
+      f.setAttribute("allow", "clipboard-read; clipboard-write; fullscreen; autoplay; keyboard-map");
+      f.setAttribute("allowfullscreen", "");
+      fr.appendChild(f);
+    }
+    const users = S.agents.filter(usesBrowser);
+    const who = users.length === 0 ? '<span class="bwho idle">Gerade nutzt kein Agent den Browser</span>'
+      : users.length === 1 ? '<button type="button" class="bwho" data-agent="' + esc(users[0].id) + '"><span class="dot working"></span><b>' + esc(users[0].project) + '</b><span>' + esc(users[0].title || "") + '</span></button>'
+      : '<span class="bwho warn">' + users.length + ' Agents nutzen den Browser gleichzeitig:</span>' + users.map(a => '<button type="button" class="bwho" data-agent="' + esc(a.id) + '"><span class="dot working"></span><b>' + esc(a.project) + '</b></button>').join("");
+    $("#browserHead").innerHTML = '<div class="brand"><b>Browser</b></div><div class="bwhos">' + who + '</div>' +
+      '<button type="button" class="iconbtn" data-browser-reload title="Neu verbinden"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg></button>';
+  }
+  function openBrowser() { if (S.browser) setTab("browser"); }
+  function renderAll() { markSeen(); renderConn(); renderList(); renderMain(); renderSide(); renderBrowser(); }
 
   // Aktionen
   const enc = encodeURIComponent;
@@ -920,8 +962,10 @@
   });
   // Klicks
   document.addEventListener("click", e => {
-    const t = e.target.closest("[data-cfgfor], button, [data-approve], [data-deny], [data-close]");
+    const t = e.target.closest("[data-cfgfor], button, [data-approve], [data-deny], [data-close], [data-open-browser]");
     if (!t) return;
+    if (t.hasAttribute("data-open-browser")) { e.stopPropagation(); openBrowser(); return; }
+    if (t.hasAttribute("data-browser-reload")) { $("#browserFrame").innerHTML = ""; renderBrowser(); return; }
     if (t.dataset.approve) { e.stopPropagation(); answer(t.dataset.approve, 1, t.dataset.hash); return; }
     if (t.dataset.deny) { e.stopPropagation(); answer(t.dataset.deny, "esc", t.dataset.hash); return; }
     if (t.dataset.cfgfor) { e.stopPropagation(); openCfg(t.dataset.cfgfor); return; }
@@ -1227,7 +1271,8 @@
     if (state.agent && !byId(state.agent) && prev.agents.some(a => a.id === state.agent)) { if (!isDesk()) app.dataset.mview = "list"; state.agent = null; }
     // Tipp im offenen Agent neu aufgetaucht oder verschwunden: Karte nachladen
     if (state.agent) { const o = prev.agents.find(a => a.id === state.agent), n = byId(state.agent); if (n && (o ? o.tip && o.tip.line : null) !== (n.tip ? n.tip.line : null)) loadFeed(state.agent); }
-    renderConn(); renderList();
+    if (state.tab === "browser" && !S.browser) { setTab(state.list); return; }
+    renderConn(); renderList(); renderBrowser();
     const a = byId(state.agent);
     const pa = prev.agents.find(x => x.id === state.agent);
     const keyOf = x => x ? JSON.stringify([x.status, x.ctx, x.mode, x.model, x.effort, x.plan, x.subs, x.queue, x.title, x.dialog && x.dialog.hash]) : "";
@@ -1253,6 +1298,8 @@
     navigator.serviceWorker.register("/sw.js").catch(() => {});
     navigator.serviceWorker.addEventListener("message", e => { if (e.data && e.data.type === "open" && e.data.pane) openAgent(e.data.pane); });
   }
+  // Direkt-Link auf den Browser: #browser
+  if (location.hash === "#browser") { const wb = setInterval(() => { if (loaded) { clearInterval(wb); openBrowser(); } }, 200); setTimeout(() => clearInterval(wb), 10000); }
   // Direkt-Link aus der Push-Nachricht: #agent-w8-p3
   const hm = location.hash.match(/^#agent-(.+)$/);
   if (hm) {

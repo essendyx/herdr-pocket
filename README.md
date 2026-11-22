@@ -100,6 +100,7 @@ For real use, run it as a service. See [`examples/herdr-pocket.service`](example
 | `HERDR_APP_AUTH` | | Set to `none` to run without login (trusted networks only, see below) |
 | `HERDR_APP_STATE` | `~/.config/herdr-app` | State: push keys, settings, pins, queue, usage |
 | `HERDR_APP_IMAGE_DIR` | `$HERDR_APP_STATE/images` | Where pasted images are stored |
+| `HERDR_APP_BROWSER_UPSTREAM` | | Optional. Address of a [Selkies](https://github.com/selkies-project/selkies) web UI showing the browser your agents drive with Claude in Chrome, e.g. `http://127.0.0.1:7684`. Adds a **Browser** tab (see below) |
 | `HERDR_SOCKET` | `~/.config/herdr/herdr.sock` | herdr API socket |
 | `HERDR_APP_DEV` | | `1` = development mode: no login, only together with `HOST=127.0.0.1` |
 
@@ -113,6 +114,23 @@ This app can type into your terminals. Treat it like SSH access to the machine.
 - Bind `HOST` to an address only your proxy or tunnel can reach, and firewall the port.
 - `HERDR_APP_AUTH=none` is only for networks you fully trust (for example a VPN such as Tailscale or WireGuard).
 - Only image files directly inside `HERDR_APP_IMAGE_DIR` are served back, nothing else.
+
+## Watch the agent's browser (optional)
+
+Run Chrome with the Claude in Chrome extension in a container that ships a Selkies web UI, for example `lscr.io/linuxserver/chrome`, published on localhost only:
+
+```yaml
+services:
+  browser:
+    image: lscr.io/linuxserver/chrome   # pin a version
+    environment:
+      - SELKIES_ALLOWED_ORIGINS=https://herdr.example.com
+    ports:
+      - "127.0.0.1:7684:3000"
+    shm_size: "1gb"
+```
+
+Set `HERDR_APP_BROWSER_UPSTREAM=http://127.0.0.1:7684`. The app then proxies the UI under `/browser/` (pages and WebSocket, behind the same login, cookies and access headers are not passed on) and shows it in a **Browser** tab. Agents that used a browser tool in the last three minutes get a "Browser" mark, their browser steps show up in the chat with a "Live" button. `/api/health/browser` answers 200 or 503 without login, for monitoring.
 
 ## Subscription usage in the header (optional)
 

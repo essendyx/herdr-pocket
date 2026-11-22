@@ -1,6 +1,7 @@
 // Liest Claude-Code-Verläufe (JSONL) und baut daraus Feed, Plan, Kontext und Änderungen.
 import { homedir } from "os";
 import { join } from "path";
+import { browserTool, describeBrowser } from "./browser.ts";
 
 export type FeedItem =
   | { t: "user"; v: string }
@@ -9,7 +10,7 @@ export type FeedItem =
   | { t: "tool"; k: string; a: string; s: "ok" | "run" | "err" }
   | { t: "diff"; f: string; add: number; del: number; lines: string[] };
 export type PlanStep = [string, "done" | "run" | "todo"];
-export type SessionInfo = { last: number; pending: string[]; feed: FeedItem[]; plan: PlanStep[]; subs: number; ctx: number; model: string | null; effort: string | null; mode: string | null; changes: FeedItem[] };
+export type SessionInfo = { last: number; pending: string[]; feed: FeedItem[]; plan: PlanStep[]; subs: number; ctx: number; model: string | null; effort: string | null; mode: string | null; changes: FeedItem[]; browserAt: number };
 
 const MAX_DIFF_LINES = 40;
 const EDIT_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
@@ -20,6 +21,8 @@ export function transcriptPath(cwd: string, sessionId: string): string {
 }
 
 function describe(name: string, input: any): string {
+  const bt = browserTool(name);
+  if (bt) return describeBrowser(bt, input);
   if (!input || typeof input !== "object") return "";
   const v = input.command ?? input.file_path ?? input.path ?? input.pattern ?? input.url ?? input.description ?? input.query
     ?? Object.values(input).find(x => typeof x === "string") ?? "";
@@ -54,6 +57,8 @@ export function parseTranscript(text: string): SessionInfo {
   const openAgents = new Set<string>();
   let compactTrigger = "";
   let last = 0;
+  // Letzter Schritt im Browser (Claude in Chrome), für "nutzt Browser"
+  let browserAt = 0;
   // Warteschlange von Claude Code: eingereiht, aber noch nicht aufgenommen (null = ohne Text, z. B. interne Meldungen)
   const queue: (string | null)[] = [];
 
@@ -126,6 +131,7 @@ export function parseTranscript(text: string): SessionInfo {
           for (const [k, t] of tasks) if (k === c.input.taskId || t.title === c.input.taskId) t.status = c.input.status ?? t.status;
         }
         if (c.name === "Agent" || c.name === "Task") openAgents.add(c.id);
+        if (typeof c.name === "string" && browserTool(c.name)) { const ts = Date.parse(o.timestamp); if (ts > browserAt) browserAt = ts; }
         if (PLAN_TOOLS.has(c.name)) continue;
         toolIndex.set(c.id, feed.length);
         if (EDIT_TOOLS.has(c.name)) editTool.set(c.id, c.name);
@@ -176,7 +182,7 @@ export function parseTranscript(text: string): SessionInfo {
     plan = [...tasks.values()].map(t => [t.title, t.status === "completed" ? "done" : t.status === "in_progress" ? "run" : "todo"]);
   }
   const pending = queue.filter((c): c is string => !!c && !!c.trim() && !isInternal(c));
-  return { last, pending, feed, plan, subs: openAgents.size, ctx, model, effort, mode, changes: feed.filter(x => x.t === "diff") };
+  return { last, pending, feed, plan, subs: openAgents.size, ctx, model, effort, mode, changes: feed.filter(x => x.t === "diff"), browserAt };
 }
 
 // Große Verläufe nur ab dem Ende lesen (ab einer Zeilengrenze), damit der Server nicht blockiert

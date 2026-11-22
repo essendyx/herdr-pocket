@@ -552,3 +552,29 @@ input, textarea, select { font-size: 16px !important; }
 .perm .qtabs span { font-size: 12px; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
 .perm .qtabs span.done { color: var(--fg); }
 .perm .qtabs span.cur { color: var(--fg); border-color: currentColor; font-weight: 600; }
+
+/* Browser des Agents (Selkies unter /browser/) */
+[data-browser-only][hidden] { display: none !important; }
+.tabbar.five { grid-template-columns: repeat(5, 1fr); }
+#p-browser { display: none; }
+.app[data-tab="browser"] #p-browser { display: flex; }
+.app[data-tab="browser"] #p-list, .app[data-tab="browser"] #p-main, .app[data-tab="browser"] #p-side, .app[data-tab="browser"] .fab { display: none; }
+.bhead { display: flex; align-items: center; gap: 10px; padding-block: 8px; border-bottom: 1px solid var(--line); background: var(--bg); min-width: 0; }
+.bhead .brand { flex: none; }
+.bwhos { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.bwho { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; white-space: nowrap; min-width: 0; border-radius: 999px; padding: 4px 10px; background: var(--working-soft); color: var(--fg); }
+.bwho .dot { margin: 0; flex: none; }
+.bwho span:last-child:not(.dot) { color: var(--muted); overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
+.bwho.idle { background: none; color: var(--muted); padding-inline: 0; }
+.bwho.warn { background: var(--blocked-soft); color: var(--blocked); font-weight: 600; }
+.bframe { flex: 1; min-height: 0; position: relative; background: #000; }
+.bframe iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+.card .bmark { grid-column: 2 / 4; justify-self: start; display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--working); background: var(--working-soft); border-radius: 999px; padding: 2px 9px 2px 7px; margin-top: 4px; }
+.bmark svg, .btool .k svg, .blivebtn svg { width: 14px; height: 14px; flex: none; }
+.btool .k { display: inline-flex; align-items: center; gap: 6px; color: var(--working); }
+.btool .blive { flex: none; font-size: 12px; font-weight: 600; color: var(--accent); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; }
+.thinking .blivebtn { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; padding: 5px 12px; color: var(--working); }
+@media (min-width: 960px) {
+  .app[data-tab="browser"] #p-list { display: flex; }
+  #p-browser { grid-column: 2 / -1; }
+}
